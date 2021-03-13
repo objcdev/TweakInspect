@@ -192,7 +192,6 @@ def find_MSHookMessageEx(executable):
     for invocation in invocations:
 
         function_analyzer = ObjcFunctionAnalyzer.get_function_analyzer(executable.binary, invocation.caller_func_start_address)
-
         # The first arg is the Class on which a method will be intrumented.
         # Look for a call to objc_getClass()
         getClass_invocation = last_invocation_of_function(function_analyzer, "objc_getClass", invocation.caller_addr)
@@ -201,15 +200,17 @@ def find_MSHookMessageEx(executable):
 
         # Found objc_getClass(), x0 should be a string that is the class name
         class_name = read_string_from_register(function_analyzer, "x0", getClass_invocation)
-
         # The next arg is a selector that is the Method to instrument.
         # It should be in x1
         instructions = function_analyzer.get_instruction_at_address(invocation.caller_addr)
         parsed_instructions = ObjcInstruction.parse_instruction(function_analyzer, instructions)
         x1 = function_analyzer.get_register_contents_at_instruction("x1", parsed_instructions)
         selector = analyzer.objc_helper.selector_for_selref(x1.value)
-
-        found_calls.append(f"%hook [{class_name} {selector.name}]")
+        if selector:
+            selector_name = selector.name
+        else:
+            selector_name = executable.binary.read_string_at_address(x1.value)
+        found_calls.append(f"%hook [{class_name} {selector_name}]")
     return found_calls
 
 
@@ -360,10 +361,8 @@ class DebFile(object):
         for filename in ar_file._name_map.keys():
             if b"data." in filename:
                 data_tarball_ar = ar_file.open(filename.decode("utf-8"))
-                d = data_tarball_ar.read()
                 self.data_tarball = tarfile.open(fileobj=data_tarball_ar, mode="r:*")
-                Path("cabrridge.data.tar.gz").write_bytes(d)
-                # return
+                return
 
         raise Exception("failed to find data archive")
 
@@ -378,7 +377,10 @@ class DebFile(object):
         """Get a file from the tweak by name
         """
         if filename not in self._extracted_files and self.data_tarball:
-            extracted_file = self.data_tarball.extractfile(filename)
+            try:
+                extracted_file = self.data_tarball.extractfile(filename)
+            except KeyError:
+                return None
             if extracted_file:
                 file_bytes = extracted_file.read()
                 self._extracted_files[filename] = file_bytes
