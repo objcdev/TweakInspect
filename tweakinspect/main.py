@@ -40,11 +40,18 @@ def read_string_from_register(function_analyzer: ObjcFunctionAnalyzer, register:
     instr_idx = callsite.address - 4
     while instr_idx > function_analyzer.start_address:
         instr_cand = function_analyzer.get_instruction_at_address(instr_idx)
-        if instr_cand.insn_name() == "bl" and register == "x0":
+        if instr_cand.insn_name().startswith("b") and register == "x0":
             # this branch populates the targeted register...
             # TODO:
             # For now, use this function name
             symbol_name = function_analyzer.macho_analyzer.exported_symbol_name_for_address(instr_cand.operands[0].imm)
+            if not symbol_name:
+                symbol_name = function_analyzer.macho_analyzer._imported_symbol_addresses_to_names.get(instr_cand.operands[0].imm)
+
+            # Special handling for these - return arg0
+            if symbol_name in ["_sel_registerName", "_NSSelectorFromString"]:
+                return read_string_from_register(function_analyzer, "x0", instr_cand)
+
             return f"%RET_OF_{symbol_name}()%"
 
         if register in instr_cand.op_str:
@@ -71,12 +78,14 @@ def read_string_from_register(function_analyzer: ObjcFunctionAnalyzer, register:
 
     # ldr x0, [sp, #0x40 + var_20]
     elif prev_instr.insn_name() == "ldr":
+        # (base, offset)
+        position = (prev_instr.operands[-1].mem.base, prev_instr.operands[-1].mem.disp)
         instr_idx = prev_instr.address - 4
         str_instr = None
         # search for a str to the place
         while instr_idx > function_analyzer.start_address:
             instr_cand = function_analyzer.get_instruction_at_address(instr_idx)
-            if prev_instr.op_str in instr_cand.op_str:
+            if (instr_cand.operands[-1].mem.base, instr_cand.operands[-1].mem.disp) == position:
                 # str x0, [sp, #0x40 + var_20]
                 str_instr = instr_cand
                 break
@@ -104,8 +113,51 @@ def find_setImplementations(executable):
         return found_calls
 
     invocations = analyzer.calls_to(method_setImplementation.address)
-    for invocation in invocations:
+    for idx, invocation in enumerate(invocations):
+        function_analyzer = ObjcFunctionAnalyzer.get_function_analyzer(executable.binary, invocation.caller_func_start_address)
+        # The first arg is a Class
+        # Look for a call to objc_getClass()
+        getClass_invocation = last_invocation_of_function(function_analyzer, "objc_getClass", invocation.caller_addr)
+        if not getClass_invocation:
+            continue
 
+        # Found objc_getClass(), x0 should be a string that is the class name
+        class_name = read_string_from_register(function_analyzer, "x0", getClass_invocation)
+        # The second arg is a Method
+        # Look for calls to getInstanceMethod/getClassMethod
+        getMethod_invocations = find_calls_to_function_before_address(function_analyzer, "class_getInstanceMethod", invocation.caller_addr)
+        if not getMethod_invocations:
+            continue
+        correlated_idx = max(idx, len(getMethod_invocations) - 1)
+        getMethod_invocation = getMethod_invocations[correlated_idx]
+
+        # x1 should be a selector that is the method to get
+        x1 = function_analyzer.get_register_contents_at_instruction("x1", getMethod_invocation)
+        if x1.type == RegisterContentsType.IMMEDIATE and analyzer.objc_helper.selector_for_selref(x1.value):
+            selector_name = analyzer.objc_helper.selector_for_selref(x1.value).name
+        else:
+            # maybe a string?
+            selector_name = read_string_from_register(function_analyzer, "x1", getMethod_invocation)
+        found_calls.append(f"%hook [{class_name} {selector_name}]")
+    return found_calls
+
+
+def find_logos_register_hook(executable):
+    """Find invocations of _logos_register_hook
+    """
+    found_calls = []
+    analyzer = MachoAnalyzer.get_analyzer(executable.binary)
+
+    register_hook_candidates = [function for function in analyzer.exported_symbol_names_to_pointers if "logos_register_hook" in function]
+    if not register_hook_candidates:
+        return found_calls
+
+    _logos_register_hook = analyzer.callable_symbol_for_symbol_name(register_hook_candidates[0])
+    if not _logos_register_hook:
+        return found_calls
+
+    invocations = analyzer.calls_to(_logos_register_hook.address)
+    for invocation in invocations:
         function_analyzer = ObjcFunctionAnalyzer.get_function_analyzer(executable.binary, invocation.caller_func_start_address)
 
         # The first arg is a Class
@@ -117,14 +169,10 @@ def find_setImplementations(executable):
         # Found objc_getClass(), x0 should be a string that is the class name
         class_name = read_string_from_register(function_analyzer, "x0", getClass_invocation)
 
-        # The second arg is a Method
-        # Look for calls to getInstanceMethod/getClassMethod
-        getMethod_invocation = last_invocation_of_function(function_analyzer, "getInstanceMethod", invocation.caller_addr)
-        if not getMethod_invocation:
-            continue
-
-        # x1 should be a selector that is the method to get
-        x1 = function_analyzer.get_register_contents_at_instruction("x1", getMethod_invocation)
+        # The second arg is a selector
+        instruction = function_analyzer.get_instruction_at_address(invocation.caller_addr)
+        parsed_instructions = ObjcInstruction.parse_instruction(function_analyzer, instruction)
+        x1 = function_analyzer.get_register_contents_at_instruction("x1", parsed_instructions)
         selector = analyzer.objc_helper.selector_for_selref(x1.value)
 
         found_calls.append(f"%hook [{class_name} {selector.name}]")
@@ -277,6 +325,7 @@ class Executable(object):
             self.hooked_symbols = find_MSHookFunction(self)
             self.hooked_symbols += find_MSHookMessageEx(self)
             self.hooked_symbols += find_setImplementations(self)
+            self.hooked_symbols += find_logos_register_hook(self)
         return self.hooked_symbols
 
     def get_entitlements(self) -> dict:
@@ -303,7 +352,6 @@ class DebFile(object):
         self.data_tarball = None
         self.executable_files = None
         self._parse_deb()
- 
 
     def _parse_deb(self) -> None:
         """Find the data archive within the provided deb file

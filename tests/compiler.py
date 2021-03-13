@@ -41,7 +41,7 @@ class SnippetCompiler:
                     "-framework",
                     "CydiaSubstrate",
                     "-framework",
-                    "CoreFoundation",
+                    "Foundation",
                     "-include",
                     "substrate.h",
                     str(logos_source_path),
