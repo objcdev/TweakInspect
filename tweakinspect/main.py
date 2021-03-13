@@ -59,7 +59,7 @@ def read_string_from_register(function_analyzer: ObjcFunctionAnalyzer, register:
     # add x1, x1, #0x5bc
     if prev_instr.insn_name() == "add":
         # Get the value of the source register
-        adrp_instr = function_analyzer.get_instruction_at_address(callsite.address - 8)
+        adrp_instr = function_analyzer.get_instruction_at_address(prev_instr.address - 4)
         class_page = adrp_instr.operands[1].imm
         # Get the value to be added
         class_offset = prev_instr.operands[2].imm
@@ -198,7 +198,7 @@ def find_MSHookFunction(executable):
                 found_calls.append(f"%hookf {symbol_name}()")
         else:
             # x0 isn't a recognizable address, try looking for a nearby call to dlsym or MSFindSymbol
-            for lookup_func in ["dlsym", "MSFindSymbol"]:
+            for lookup_func in ["MSFindSymbol", "dlsym"]:
                 lookup_func_invocation = last_invocation_of_function(function_analyzer, lookup_func, invocation.caller_addr)
                 if not lookup_func_invocation:
                     continue
