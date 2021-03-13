@@ -15,11 +15,11 @@ class SnippetCompiler:
 
     def compile(self) -> None:
         # Preprocess the source
+        theos_path = Path("~/theos").expanduser()
         logos_source_path = Path(f"{self.source_file_path.as_posix()}.mm")
-        logos_source = subprocess.check_output(["/Users/user/theos/bin/logos.pl", "-c", "warnings=error", "-c", f"generator={self.generator}", self.source_file_path.as_posix()])
+        logos_source = subprocess.check_output([str(theos_path / "bin/logos.pl"), "-c", "warnings=error", "-c", f"generator={self.generator}", self.source_file_path.as_posix()])
         logos_source_path.write_bytes(logos_source)
 
-        theos_path = Path("~/theos").expanduser()
         try:
             subprocess.check_output(
                 [
