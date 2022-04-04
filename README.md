@@ -6,7 +6,7 @@ A utility to inspect iOS tweaks. Supports:
 * List package contents
 
 #### Hook Detection
-######Tweak.xm
+##### Tweak.xm
 ```
 source_code = """
 
