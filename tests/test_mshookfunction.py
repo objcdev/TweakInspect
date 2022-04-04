@@ -184,6 +184,9 @@ class TestMsHookFunction:
         CFBooleanRef fixed_MGCopyAnswer(CFStringRef string) {
             return kCFBooleanFalse;
         }
+        %hookf(int, fclose, FILE *file) {
+            return 0;
+        }
         %ctor {
             void *handle = dlopen(NULL, 0);
             MSHookFunction(((void *)dlsym(handle, "_MGGetBoolAnswer")), (void *)fixed_MGGetBoolAnswer, NULL);
@@ -192,4 +195,6 @@ class TestMsHookFunction:
         """
         with SnippetCompiler(source_code=source_code) as compiled_binary:
             exec = Executable(file_path=compiled_binary)
-            assert set(exec.get_hooks()) == set(["%hookf MGGetBoolAnswer()", "%hookf MGCopyAnswer()"])
+            assert set(exec.get_hooks()) == set(
+                ["%hookf fclose()", "%hookf MGGetBoolAnswer()", "%hookf MGCopyAnswer()"]
+            )
