@@ -3,17 +3,67 @@ import sys
 import tarfile
 import tempfile
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import unix_ar
+from capstone import CsInsn
+from capstone.arm64_const import ARM64_OP_IMM, ARM64_REG_SP
 from strongarm.macho import MachoAnalyzer, MachoParser, VirtualMemoryPointer
-from strongarm.objc import ObjcFunctionAnalyzer, ObjcInstruction
+from strongarm.objc import ObjcFunctionAnalyzer, ObjcInstruction, RegisterContents
 from strongarm_dataflow.register_contents import RegisterContentsType
 
+from tweakinspect.registers import capstone_enum_for_register, register_name_for_capstone_enum
 
-def find_calls_to_function_before_address(function_analyzer: ObjcFunctionAnalyzer, function_name: str, end_address: int) -> List[ObjcInstruction]:
-    """Invocations of function_name within the current function scope, from start of function to end_address
-    """
+
+def _get_register_contents_at_instruction(function_analyzer: ObjcFunctionAnalyzer, register: str, start_instr: CsInsn):
+    strongarm_result = function_analyzer.get_register_contents_at_instruction(register, start_instr)
+    if strongarm_result.type != RegisterContentsType.UNKNOWN and strongarm_result.value:
+        return strongarm_result
+
+    target_register = register
+    offset = 0
+    function_size = start_instr.address - function_analyzer.start_address
+    for current_address_offset in range(0, function_size, 4):
+
+        current_address = start_instr.address - current_address_offset
+        instr = function_analyzer.get_instruction_at_address(current_address)
+        if not instr:
+            continue
+
+        if len(instr.operands) < 2 or instr.mnemonic.startswith("b"):
+            continue
+
+        dst = instr.operands[0]
+        src = instr.operands[1]
+        if instr.mnemonic in ["str", "stur"]:
+            dst = instr.operands[1]
+            src = instr.operands[0]
+
+        if capstone_enum_for_register(target_register) != dst.reg:
+            continue
+
+        if src.reg == ARM64_REG_SP and len(instr.operands) > 1:
+            if "+" in target_register:
+                target_offset = int(target_register.split("+")[1])
+                sp_offset = src.mem.base + src.mem.disp
+                if target_offset != sp_offset:
+                    continue
+
+        if src.type == ARM64_OP_IMM:
+            reg_value = src.mem.base + offset
+            return RegisterContents(RegisterContentsType.IMMEDIATE, reg_value)
+
+        target_register = register_name_for_capstone_enum(src.reg)
+        offset = src.mem.disp
+        if src.reg == ARM64_REG_SP and len(instr.operands) > 1:
+            sp_offset = src.mem.base + src.mem.disp
+            target_register = f"{target_register}+{sp_offset}"
+
+
+def find_calls_to_function_before_address(
+    function_analyzer: ObjcFunctionAnalyzer, function_name: str, end_address: int
+) -> List[ObjcInstruction]:
+    """Invocations of function_name within the current function scope, from start of function to end_address"""
     function_calls = []
     for call_target in function_analyzer.call_targets:
         # Add functions that match the specified name, and are before end_address
@@ -22,9 +72,10 @@ def find_calls_to_function_before_address(function_analyzer: ObjcFunctionAnalyze
     return function_calls
 
 
-def last_invocation_of_function(function_analyzer: ObjcFunctionAnalyzer, function_name: str, current_address: int) -> Optional[ObjcInstruction]:
-    """The invocation of function_name in closest proximity (and preceding) to current_address
-    """
+def last_invocation_of_function(
+    function_analyzer: ObjcFunctionAnalyzer, function_name: str, current_address: int
+) -> Optional[ObjcInstruction]:
+    """The invocation of function_name in closest proximity (and preceding) to current_address"""
     function_calls = find_calls_to_function_before_address(function_analyzer, function_name, current_address)
     if len(function_calls) > 0:
         # The last function call will be closest to current_address
@@ -32,80 +83,17 @@ def last_invocation_of_function(function_analyzer: ObjcFunctionAnalyzer, functio
     return None
 
 
-def read_string_from_register(function_analyzer: ObjcFunctionAnalyzer, register: str, callsite: ObjcInstruction) -> Optional[str]:
-    """ Get the string that used in a objc_getClass() invocation
-    """
+def read_string_from_register(
+    function_analyzer: ObjcFunctionAnalyzer, register: str, callsite: ObjcInstruction
+) -> Optional[str]:
+    """Get the string that used in a objc_getClass() invocation"""
     # The previous instruction dealing with the target register
-    prev_instr = None
-    instr_idx = callsite.address - 4
-    while instr_idx > function_analyzer.start_address:
-        instr_cand = function_analyzer.get_instruction_at_address(instr_idx)
-        if instr_cand.insn_name().startswith("b") and register == "x0":
-            # this branch populates the targeted register...
-            # TODO:
-            # For now, use this function name
-            symbol_name = function_analyzer.macho_analyzer.exported_symbol_name_for_address(instr_cand.operands[0].imm)
-            if not symbol_name:
-                symbol_name = function_analyzer.macho_analyzer._imported_symbol_addresses_to_names.get(instr_cand.operands[0].imm)
-
-            # Special handling for these - return arg0
-            if symbol_name in ["_sel_registerName", "_NSSelectorFromString"]:
-                return read_string_from_register(function_analyzer, "x0", instr_cand)
-
-            return f"%RET_OF_{symbol_name}()%"
-
-        if register in instr_cand.op_str:
-            prev_instr = instr_cand
-            break
-        instr_idx -= 4
-
-    if not prev_instr:
-        return None
-
-    # adrp x1, #0x16000
-    # add x1, x1, #0x5bc
-    if prev_instr.insn_name() == "add":
-        # Get the value of the source register
-        adrp_instr = function_analyzer.get_instruction_at_address(prev_instr.address - 4)
-        class_page = adrp_instr.operands[1].imm
-        # Get the value to be added
-        class_offset = prev_instr.operands[2].imm
-        class_addr = class_page + class_offset
-        # Read the string from the calculated address
-        class_name = function_analyzer.binary.read_string_at_address(class_addr)
-        if class_name:
-            return class_name
-
-    # ldr x0, [sp, #0x40 + var_20]
-    elif prev_instr.insn_name() == "ldr":
-        # (base, offset)
-        position = (prev_instr.operands[-1].mem.base, prev_instr.operands[-1].mem.disp)
-        instr_idx = prev_instr.address - 4
-        str_instr = None
-        # search for a str to the place
-        while instr_idx > function_analyzer.start_address:
-            instr_cand = function_analyzer.get_instruction_at_address(instr_idx)
-            if (instr_cand.operands[-1].mem.base, instr_cand.operands[-1].mem.disp) == position:
-                # str x0, [sp, #0x40 + var_20]
-                str_instr = instr_cand
-                break
-            instr_idx -= 4
-        # TODO: Hardcoding x0
-        return read_string_from_register(function_analyzer, "x0", str_instr)
-
-    else:
-        # Just try to find the string in the register
-        reg = function_analyzer.get_register_contents_at_instruction(register, callsite)
-        class_name = function_analyzer.binary.read_string_at_address(reg.value)
-        return class_name
-
-    print(f"failed to find class name at {hex(callsite.address)}")
-    return None
+    reg_contents = _get_register_contents_at_instruction(function_analyzer, register, callsite)
+    return function_analyzer.binary.read_string_at_address(reg_contents.value)
 
 
 def find_setImplementations(executable):
-    """Find invocations of method_setImplementation
-    """
+    """Find invocations of method_setImplementation"""
     found_calls = []
     analyzer = MachoAnalyzer.get_analyzer(executable.binary)
     method_setImplementation = analyzer.callable_symbol_for_symbol_name("_method_setImplementation")
@@ -114,7 +102,9 @@ def find_setImplementations(executable):
 
     invocations = analyzer.calls_to(method_setImplementation.address)
     for idx, invocation in enumerate(invocations):
-        function_analyzer = ObjcFunctionAnalyzer.get_function_analyzer(executable.binary, invocation.caller_func_start_address)
+        function_analyzer = ObjcFunctionAnalyzer.get_function_analyzer(
+            executable.binary, invocation.caller_func_start_address
+        )
         # The first arg is a Class
         # Look for a call to objc_getClass()
         getClass_invocation = last_invocation_of_function(function_analyzer, "objc_getClass", invocation.caller_addr)
@@ -125,7 +115,9 @@ def find_setImplementations(executable):
         class_name = read_string_from_register(function_analyzer, "x0", getClass_invocation)
         # The second arg is a Method
         # Look for calls to getInstanceMethod/getClassMethod
-        getMethod_invocations = find_calls_to_function_before_address(function_analyzer, "class_getInstanceMethod", invocation.caller_addr)
+        getMethod_invocations = find_calls_to_function_before_address(
+            function_analyzer, "class_getInstanceMethod", invocation.caller_addr
+        )
         if not getMethod_invocations:
             continue
         correlated_idx = max(idx, len(getMethod_invocations) - 1)
@@ -143,12 +135,13 @@ def find_setImplementations(executable):
 
 
 def find_logos_register_hook(executable):
-    """Find invocations of _logos_register_hook
-    """
+    """Find invocations of _logos_register_hook"""
     found_calls = []
     analyzer = MachoAnalyzer.get_analyzer(executable.binary)
 
-    register_hook_candidates = [function for function in analyzer.exported_symbol_names_to_pointers if "logos_register_hook" in function]
+    register_hook_candidates = [
+        function for function in analyzer.exported_symbol_names_to_pointers if "logos_register_hook" in function
+    ]
     if not register_hook_candidates:
         return found_calls
 
@@ -158,7 +151,9 @@ def find_logos_register_hook(executable):
 
     invocations = analyzer.calls_to(_logos_register_hook.address)
     for invocation in invocations:
-        function_analyzer = ObjcFunctionAnalyzer.get_function_analyzer(executable.binary, invocation.caller_func_start_address)
+        function_analyzer = ObjcFunctionAnalyzer.get_function_analyzer(
+            executable.binary, invocation.caller_func_start_address
+        )
 
         # The first arg is a Class
         # Look for a call to objc_getClass()
@@ -180,8 +175,7 @@ def find_logos_register_hook(executable):
 
 
 def find_MSHookMessageEx(executable):
-    """Find invocations of MSHookMessageEx
-    """
+    """Find invocations of MSHookMessageEx"""
     found_calls = []
     analyzer = MachoAnalyzer.get_analyzer(executable.binary)
     MSHookMessageEx = analyzer.callable_symbol_for_symbol_name("_MSHookMessageEx")
@@ -191,7 +185,9 @@ def find_MSHookMessageEx(executable):
     invocations = analyzer.calls_to(MSHookMessageEx.address)
     for invocation in invocations:
 
-        function_analyzer = ObjcFunctionAnalyzer.get_function_analyzer(executable.binary, invocation.caller_func_start_address)
+        function_analyzer = ObjcFunctionAnalyzer.get_function_analyzer(
+            executable.binary, invocation.caller_func_start_address
+        )
         # The first arg is the Class on which a method will be intrumented.
         # Look for a call to objc_getClass()
         getClass_invocation = last_invocation_of_function(function_analyzer, "objc_getClass", invocation.caller_addr)
@@ -215,8 +211,7 @@ def find_MSHookMessageEx(executable):
 
 
 def find_MSHookFunction(executable):
-    """Find invocations of MSHookFunction
-    """
+    """Find invocations of MSHookFunction"""
     found_calls = []
     analyzer = MachoAnalyzer.get_analyzer(executable.binary)
     MSHookFunction = analyzer.callable_symbol_for_symbol_name("_MSHookFunction")
@@ -226,13 +221,15 @@ def find_MSHookFunction(executable):
     invocations = analyzer.calls_to(MSHookFunction.address)
     for invocation in invocations:
 
-        function_analyzer = ObjcFunctionAnalyzer.get_function_analyzer(executable.binary, invocation.caller_func_start_address)
+        function_analyzer = ObjcFunctionAnalyzer.get_function_analyzer(
+            executable.binary, invocation.caller_func_start_address
+        )
         instructions = function_analyzer.get_instruction_at_address(invocation.caller_addr)
         parsed_instructions = ObjcInstruction.parse_instruction(function_analyzer, instructions)
 
         # The first arg is the function to hook.
         # First, see if its an address that correlates with a known function
-        x0 = function_analyzer.get_register_contents_at_instruction("x0", parsed_instructions)
+        x0 = _get_register_contents_at_instruction(function_analyzer, "x0", instructions)
         if x0.value:
             # This could be a linked function
             if VirtualMemoryPointer(x0.value) in analyzer.imported_symbols_to_symbol_names:
@@ -241,14 +238,16 @@ def find_MSHookFunction(executable):
                 found_calls.append(f"%hookf {symbol_name}()")
             else:
                 # It could be a string
-                function = analyzer.exported_symbol_name_for_address(x0.value)
+                # ?? function = analyzer.exported_symbol_name_for_address(x0.value)
                 symbol_name = read_string_from_register(function_analyzer, "x0", parsed_instructions)
                 symbol_name = symbol_name[1:] if symbol_name.startswith("_") else symbol_name
                 found_calls.append(f"%hookf {symbol_name}()")
         else:
             # x0 isn't a recognizable address, try looking for a nearby call to dlsym or MSFindSymbol
             for lookup_func in ["MSFindSymbol", "dlsym"]:
-                lookup_func_invocation = last_invocation_of_function(function_analyzer, lookup_func, invocation.caller_addr)
+                lookup_func_invocation = last_invocation_of_function(
+                    function_analyzer, lookup_func, invocation.caller_addr
+                )
                 if not lookup_func_invocation:
                     continue
 
@@ -262,14 +261,15 @@ def find_MSHookFunction(executable):
 
 
 def does_call_setuid0(executable) -> bool:
-    """Find invocations of setuid(0)
-    """
+    """Find invocations of setuid(0)"""
     analyzer = MachoAnalyzer.get_analyzer(executable.binary)
     setuid = analyzer.callable_symbol_for_symbol_name("_setuid")
     if setuid:
         invocations = analyzer.calls_to(setuid.address)
         for invocation in invocations:
-            function_analyzer = ObjcFunctionAnalyzer.get_function_analyzer(executable.binary, invocation.caller_func_start_address)
+            function_analyzer = ObjcFunctionAnalyzer.get_function_analyzer(
+                executable.binary, invocation.caller_func_start_address
+            )
             instructions = function_analyzer.get_instruction_at_address(invocation.caller_addr)
             parsed_instructions = ObjcInstruction.parse_instruction(function_analyzer, instructions)
 
@@ -283,14 +283,15 @@ def does_call_setuid0(executable) -> bool:
 
 
 def does_call_setgid0(executable) -> bool:
-    """Find invocations of setgid(0)
-    """
+    """Find invocations of setgid(0)"""
     analyzer = MachoAnalyzer.get_analyzer(executable.binary)
     setgid = analyzer.callable_symbol_for_symbol_name("_setgid")
     if setgid:
         invocations = analyzer.calls_to(setgid.address)
         for invocation in invocations:
-            function_analyzer = ObjcFunctionAnalyzer.get_function_analyzer(executable.binary, invocation.caller_func_start_address)
+            function_analyzer = ObjcFunctionAnalyzer.get_function_analyzer(
+                executable.binary, invocation.caller_func_start_address
+            )
             instructions = function_analyzer.get_instruction_at_address(invocation.caller_addr)
             parsed_instructions = ObjcInstruction.parse_instruction(function_analyzer, instructions)
 
@@ -304,34 +305,33 @@ def does_call_setgid0(executable) -> bool:
 
 
 class Executable(object):
-    """An executable from the tweak package
-    """
+    """An executable from the tweak package"""
 
-    def __init__(self, file_byes: bytes = None, file_path: Path = None) -> None:
+    def __init__(self, file_bytes: bytes = None, file_path: Path = None) -> None:
         self.file_path = file_path
-        if not file_path:
+        if not file_path and file_bytes:
             temp_file = tempfile.NamedTemporaryFile(mode="wb", delete=False)
-            temp_file.write(file_byes)
+            temp_file.write(file_bytes)
             self.file_path = Path(temp_file.name)
-        self.hooked_symbols = None
+        self.hooked_symbols: Optional[List[str]] = None
         self.binary = MachoParser(self.file_path).get_arm64_slice()
 
     def cleanup(self) -> None:
-        self.file_path.unlink()
+        if self.file_path and self.file_path.exists():
+            self.file_path.unlink()
 
     def get_hooks(self) -> List[str]:
-        """ A list of the methods/functions the executable hooks
-        """
+        """A list of the methods/functions the executable hooks"""
         if not self.hooked_symbols:
+            self.hooked_symbols = []
             self.hooked_symbols = find_MSHookFunction(self)
             self.hooked_symbols += find_MSHookMessageEx(self)
             self.hooked_symbols += find_setImplementations(self)
             self.hooked_symbols += find_logos_register_hook(self)
-        return self.hooked_symbols
+        return self.hooked_symbols or []
 
     def get_entitlements(self) -> dict:
-        """ Get the entitlements the executable is signed with
-        """
+        """Get the entitlements the executable is signed with"""
         parsed_entitlements = plistlib.loads(self.binary.get_entitlements())
         return parsed_entitlements or {}
 
@@ -344,19 +344,17 @@ class Executable(object):
 
 
 class DebFile(object):
-    """A deb file containing a tweak or executable
-    """
+    """A deb file containing a tweak or executable"""
 
     def __init__(self, deb_path: Path) -> None:
         self.deb_path = deb_path
-        self._extracted_files = {}
-        self.data_tarball = None
-        self.executable_files = None
+        self._extracted_files: Dict[str, bytes] = {}
+        self.data_tarball: Optional[tarfile.TarFile] = None
+        self.executable_files: Optional[List[Executable]] = None
         self._parse_deb()
 
     def _parse_deb(self) -> None:
-        """Find the data archive within the provided deb file
-        """
+        """Find the data archive within the provided deb file"""
         ar_file = unix_ar.ArFile(file=self.deb_path.open(mode="rb"))
         for filename in ar_file._name_map.keys():
             if b"data." in filename:
@@ -367,15 +365,13 @@ class DebFile(object):
         raise Exception("failed to find data archive")
 
     def all_files(self) -> List[str]:
-        """The files in the deb that make up the package
-        """
+        """The files in the deb that make up the package"""
         if self.data_tarball:
             return [member.name for member in self.data_tarball.getmembers()]
         return []
 
     def get_file(self, filename: str) -> Optional[bytes]:
-        """Get a file from the tweak by name
-        """
+        """Get a file from the tweak by name"""
         if filename not in self._extracted_files and self.data_tarball:
             try:
                 extracted_file = self.data_tarball.extractfile(filename)
@@ -388,8 +384,7 @@ class DebFile(object):
         return self._extracted_files.get(filename, None)
 
     def get_executables(self) -> List[Executable]:
-        """Mach-Os from the deb
-        """
+        """Mach-Os from the deb"""
         if self.executable_files is None:
             self.executable_files = []
             for filename in self.all_files():
@@ -400,7 +395,6 @@ class DebFile(object):
                         # Write it to file
                         executable = Executable(file_bytes)
                         self.executable_files.append(executable)
-
         return self.executable_files
 
 

@@ -1,6 +1,5 @@
 import shutil
 import subprocess
-from sys import stderr
 import tempfile
 from pathlib import Path
 
@@ -17,7 +16,16 @@ class SnippetCompiler:
         # Preprocess the source
         theos_path = Path("~/theos").expanduser()
         logos_source_path = Path(f"{self.source_file_path.as_posix()}.mm")
-        logos_source = subprocess.check_output([str(theos_path / "bin/logos.pl"), "-c", "warnings=error", "-c", f"generator={self.generator}", self.source_file_path.as_posix()])
+        logos_source = subprocess.check_output(
+            [
+                str(theos_path / "bin/logos.pl"),
+                "-c",
+                "warnings=error",
+                "-c",
+                f"generator={self.generator}",
+                self.source_file_path.as_posix(),
+            ]
+        )
         logos_source_path.write_bytes(logos_source)
 
         try:
@@ -33,7 +41,7 @@ class SnippetCompiler:
                     "-include",
                     str(theos_path / "Prefix.pch"),
                     "-isysroot",
-                    str(theos_path / "sdks/iPhoneOS13.5.1.sdk"),
+                    str(theos_path / "sdks/iPhoneOS14.5.sdk"),
                     "-I",
                     str(theos_path / "vendor/include"),
                     "-F",
@@ -51,6 +59,8 @@ class SnippetCompiler:
                 stderr=subprocess.STDOUT,
             )
         except subprocess.CalledProcessError as e:
+            print(Path(logos_source_path).read_text())
+            shutil.rmtree(self.temp_dir_path.as_posix(), ignore_errors=True)
             raise Exception(e.stdout.decode("utf-8"))
 
     def __enter__(self) -> Path:

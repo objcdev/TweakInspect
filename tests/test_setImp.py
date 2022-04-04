@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from tweakinspect import Executable
 
 from tests.compiler import SnippetCompiler
@@ -8,6 +6,7 @@ from tests.compiler import SnippetCompiler
 class TestSetImplementation:
     def test_one_hook_no_args_nsselectorfromstring(self) -> None:
         source_code = """
+        #import <Foundation/Foundation.h>
         void new_viewDidLoad(id _self, SEL __cmd) {}
         %ctor {
             Class viewClass = objc_getClass("UIView");
@@ -34,6 +33,7 @@ class TestSetImplementation:
 
     def test_multiple_hooks_no_args_nsselectorfromstring(self) -> None:
         source_code = """
+        #import <Foundation/Foundation.h>
         void new_viewDidLoad(id _self, SEL __cmd) {}
         void new_removeFromSuperview(id _self, SEL __cmd) {}
         %ctor {
@@ -51,7 +51,9 @@ class TestSetImplementation:
         """
         with SnippetCompiler(source_code=source_code, generator="internal") as compiled_binary:
             exec = Executable(file_path=compiled_binary)
-            assert exec.get_hooks() == ["%hook [UIView viewDidLoad]", "%hook [UIView removeFromSuperview]", "%hook [SpringBoard init]"]
+            assert set(exec.get_hooks()) == set(
+                ["%hook [UIView viewDidLoad]", "%hook [UIView removeFromSuperview]", "%hook [SpringBoard init]"]
+            )
 
     def test_multiple_hooks_no_args_selregistername(self) -> None:
         source_code = """
@@ -72,4 +74,6 @@ class TestSetImplementation:
         """
         with SnippetCompiler(source_code=source_code, generator="internal") as compiled_binary:
             exec = Executable(file_path=compiled_binary)
-            assert exec.get_hooks() == ["%hook [UIView viewDidLoad]", "%hook [UIView removeFromSuperview]", "%hook [SpringBoard init]"]
+            assert set(exec.get_hooks()) == set(
+                ["%hook [UIView viewDidLoad]", "%hook [UIView removeFromSuperview]", "%hook [SpringBoard init]"]
+            )

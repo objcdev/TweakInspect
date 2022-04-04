@@ -4,12 +4,13 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-strongarm-ios = "*"
+strongarm-ios = "13.0.4"
 unix-ar = "*"
 
 [dev-packages]
 mypy = "*"
 flake8 = "*"
+pytest = "*"
 
 [requires]
 python_version = "3.9"

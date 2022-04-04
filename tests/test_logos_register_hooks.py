@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from tweakinspect import Executable
 
 from tests.compiler import SnippetCompiler
@@ -40,4 +38,8 @@ class TestMsHookMessageEx:
         """
         with SnippetCompiler(source_code=source_code, generator="internal") as compiled_binary:
             exec = Executable(file_path=compiled_binary)
-            assert exec.get_hooks() == ["%hook [SpringBoard launchHomescreen]", "%hook [CarPlay setupDock]", "%hook [backboardd reboot]"]
+            assert exec.get_hooks() == [
+                "%hook [SpringBoard launchHomescreen]",
+                "%hook [CarPlay setupDock]",
+                "%hook [backboardd reboot]",
+            ]
