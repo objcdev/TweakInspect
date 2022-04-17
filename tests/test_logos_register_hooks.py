@@ -1,4 +1,4 @@
-from tweakinspect import Executable
+from tweakinspect.executable import Executable
 
 from tests.compiler import SnippetCompiler
 
