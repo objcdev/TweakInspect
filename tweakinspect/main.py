@@ -18,11 +18,17 @@ from tweakinspect.registers import capstone_enum_for_register, register_name_for
 def _get_register_contents_at_instruction(
     function_analyzer: ObjcFunctionAnalyzer, register: str, start_instr: CsInsn, strongarm: bool = True
 ):
+    # Strongarm isn't working for a lot of cases, so only use it if specified by the caller.
+    # Otherwise, fallback to a reimplementation of SA's get_register_contents_at_instruction()
     if strongarm:
         strongarm_result = function_analyzer.get_register_contents_at_instruction(register, start_instr)
         if strongarm_result.type != RegisterContentsType.UNKNOWN and strongarm_result.value:
             return strongarm_result
 
+    # Starting at the provided instruction's address, walk the stack
+    # backwards searching for the value of the specified register.
+    # The target register will change as instructions are enumerated
+    # as data may be passed around between registers
     target_register = register
     offset = 0
     function_size = start_instr.address - function_analyzer.start_address
@@ -38,14 +44,19 @@ def _get_register_contents_at_instruction(
 
         dst = instr.operands[0]
         src = instr.operands[1]
+        # The src/dst is swapped for some instructions
         if instr.mnemonic in ["str", "stur"]:
             dst = instr.operands[1]
             src = instr.operands[0]
 
+        # If the *destination* register of this instruction is not the current *target register*,
+        # skip to the "next" (previous) instruction
         capstone_format_target_reg = capstone_enum_for_register(target_register)
         if capstone_format_target_reg != dst.reg:
             continue
-        # Additional checks for SP offset
+
+        # Be mindful of situtations like "[sp, #40]", where the register itself (sp) is
+        # not enough information to determine if this is actually a relevant target
         # TODO: should not be limited to sp
         if capstone_format_target_reg in [ARM64_REG_SP] and len(instr.operands) > 1 and "+" in target_register:
             target_offset = int(target_register.split("+")[1])
@@ -61,6 +72,10 @@ def _get_register_contents_at_instruction(
                 if target_offset != sp_offset:
                     continue
 
+        # Handle situations in which an address is calculated across 2 instructions:
+        # adrp  x3, #0xf000
+        # add   x3, #30
+        # in which x3 should be evalutated to #0xf030
         if instr.mnemonic == "adrp":
             next_instr = function_analyzer.get_instruction_at_address(current_address + 4)
             if next_instr.mnemonic == "add":
@@ -72,6 +87,7 @@ def _get_register_contents_at_instruction(
 
         target_register = register_name_for_capstone_enum(src.reg)
         offset = src.mem.disp
+        # TODO: should not be limited to sp
         if src.reg == ARM64_REG_SP and len(instr.operands) > 1:
             sp_offset = src.mem.base + src.mem.disp
             target_register = f"{target_register}+{sp_offset}"
