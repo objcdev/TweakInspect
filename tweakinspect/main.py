@@ -15,10 +15,13 @@ from strongarm_dataflow.register_contents import RegisterContentsType
 from tweakinspect.registers import capstone_enum_for_register, register_name_for_capstone_enum
 
 
-def _get_register_contents_at_instruction(function_analyzer: ObjcFunctionAnalyzer, register: str, start_instr: CsInsn):
-    strongarm_result = function_analyzer.get_register_contents_at_instruction(register, start_instr)
-    if strongarm_result.type != RegisterContentsType.UNKNOWN and strongarm_result.value:
-        return strongarm_result
+def _get_register_contents_at_instruction(
+    function_analyzer: ObjcFunctionAnalyzer, register: str, start_instr: CsInsn, strongarm: bool = True
+):
+    if strongarm:
+        strongarm_result = function_analyzer.get_register_contents_at_instruction(register, start_instr)
+        if strongarm_result.type != RegisterContentsType.UNKNOWN and strongarm_result.value:
+            return strongarm_result
 
     target_register = register
     offset = 0
@@ -48,6 +51,11 @@ def _get_register_contents_at_instruction(function_analyzer: ObjcFunctionAnalyze
                 sp_offset = src.mem.base + src.mem.disp
                 if target_offset != sp_offset:
                     continue
+
+        if instr.mnemonic == "adrp":
+            next_instr = function_analyzer.get_instruction_at_address(current_address + 4)
+            if next_instr.mnemonic == "add":
+                offset = next_instr.operands[-1].mem.base
 
         if src.type == ARM64_OP_IMM:
             reg_value = src.mem.base + offset
@@ -92,6 +100,10 @@ def read_string_from_register(
     return function_analyzer.binary.read_string_at_address(reg_contents.value)
 
 
+def string_from_literal_or_selref_address(analyzer: MachoAnalyzer, address: VirtualMemoryPointer) -> Optional[str]:
+    return analyzer.objc_helper.selector_for_selref(address) or analyzer.binary.read_string_at_address(address)
+
+
 def find_setImplementations(executable):
     """Find invocations of method_setImplementation"""
     found_calls = []
@@ -124,13 +136,12 @@ def find_setImplementations(executable):
         getMethod_invocation = getMethod_invocations[correlated_idx]
 
         # x1 should be a selector that is the method to get
-        x1 = function_analyzer.get_register_contents_at_instruction("x1", getMethod_invocation)
-        if x1.type == RegisterContentsType.IMMEDIATE and analyzer.objc_helper.selector_for_selref(x1.value):
-            selector_name = analyzer.objc_helper.selector_for_selref(x1.value).name
-        else:
-            # maybe a string?
-            selector_name = read_string_from_register(function_analyzer, "x1", getMethod_invocation)
-        found_calls.append(f"%hook [{class_name} {selector_name}]")
+        sel_value = _get_register_contents_at_instruction(
+            function_analyzer, "x1", getMethod_invocation.raw_instr, strongarm=False
+        )
+        if sel_value.type == RegisterContentsType.IMMEDIATE:
+            selector_name = string_from_literal_or_selref_address(analyzer, sel_value.value)
+            found_calls.append(f"%hook [{class_name} {selector_name}]")
     return found_calls
 
 
