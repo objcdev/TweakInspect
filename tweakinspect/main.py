@@ -81,10 +81,16 @@ def _get_register_contents_at_instruction(
             if next_instr.mnemonic == "add":
                 offset = next_instr.operands[-1].mem.base
 
+        # If this register contains an immediate value, it's likely the value being targeted.
+        # Return the value
         if src.type == ARM64_OP_IMM:
             reg_value = src.mem.base + offset
             return RegisterContents(RegisterContentsType.IMMEDIATE, reg_value)
 
+        # This instruction's destination register matches the current target register,
+        # but the source register is not an immediate value; likely another register.
+        # Update the target_register to this instruction's source register
+        # and keep searching
         target_register = register_name_for_capstone_enum(src.reg)
         offset = src.mem.disp
         # TODO: should not be limited to sp
