@@ -8,7 +8,7 @@ from typing import Dict, List, Optional
 import unix_ar
 from capstone import CsInsn
 from capstone.arm64_const import ARM64_OP_IMM, ARM64_REG_SP
-from strongarm.macho import MachoAnalyzer, MachoParser, VirtualMemoryPointer
+from strongarm.macho import MachoAnalyzer, MachoParser, ObjcSelector, VirtualMemoryPointer
 from strongarm.objc import ObjcFunctionAnalyzer, ObjcInstruction, RegisterContents
 from strongarm_dataflow.register_contents import RegisterContentsType
 
@@ -33,7 +33,7 @@ def _get_register_contents_at_instruction(
         if not instr:
             continue
 
-        if len(instr.operands) < 2 or instr.mnemonic.startswith("b"):
+        if len(instr.operands) < 2 or instr.mnemonic.startswith("b") or instr.mnemonic == "cbz":
             continue
 
         dst = instr.operands[0]
@@ -42,10 +42,19 @@ def _get_register_contents_at_instruction(
             dst = instr.operands[1]
             src = instr.operands[0]
 
-        if capstone_enum_for_register(target_register) != dst.reg:
+        capstone_format_target_reg = capstone_enum_for_register(target_register)
+        if capstone_format_target_reg != dst.reg:
             continue
+        # Additional checks for SP offset
+        # TODO: should not be limited to sp
+        if capstone_format_target_reg in [ARM64_REG_SP] and len(instr.operands) > 1 and "+" in target_register:
+            target_offset = int(target_register.split("+")[1])
+            sp_offset = dst.mem.base + dst.mem.disp
+            if target_offset != sp_offset:
+                continue
 
-        if src.reg == ARM64_REG_SP and len(instr.operands) > 1:
+        # TODO: should not be limited to sp
+        if src.reg in [ARM64_REG_SP] and len(instr.operands) > 1:
             if "+" in target_register:
                 target_offset = int(target_register.split("+")[1])
                 sp_offset = src.mem.base + src.mem.disp
@@ -101,7 +110,26 @@ def read_string_from_register(
 
 
 def string_from_literal_or_selref_address(analyzer: MachoAnalyzer, address: VirtualMemoryPointer) -> Optional[str]:
-    return analyzer.objc_helper.selector_for_selref(address) or analyzer.binary.read_string_at_address(address)
+    def _string_from_literal_or_selref_address(_address) -> Optional[str]:
+        for func in [
+            analyzer.objc_helper.selector_for_selref,
+            analyzer.objc_helper.selector_for_selector_literal,
+            analyzer.binary.read_string_at_address,
+        ]:
+            try:
+                value = func(_address)
+                if value:
+                    if isinstance(value, ObjcSelector):
+                        return value.name
+                    return value
+            except:
+                pass
+
+    # TODO:
+    # Sometimes there is a selector address without virtual base
+    return _string_from_literal_or_selref_address(address) or _string_from_literal_or_selref_address(
+        address + 0x100000000
+    )
 
 
 def find_setImplementations(executable):
@@ -207,16 +235,15 @@ def find_MSHookMessageEx(executable):
 
         # Found objc_getClass(), x0 should be a string that is the class name
         class_name = read_string_from_register(function_analyzer, "x0", getClass_invocation)
+
         # The next arg is a selector that is the Method to instrument.
         # It should be in x1
         instructions = function_analyzer.get_instruction_at_address(invocation.caller_addr)
         parsed_instructions = ObjcInstruction.parse_instruction(function_analyzer, instructions)
-        x1 = function_analyzer.get_register_contents_at_instruction("x1", parsed_instructions)
-        selector = analyzer.objc_helper.selector_for_selref(x1.value)
-        if selector:
-            selector_name = selector.name
-        else:
-            selector_name = executable.binary.read_string_at_address(x1.value)
+        selector_val = _get_register_contents_at_instruction(
+            function_analyzer, "x1", parsed_instructions.raw_instr, strongarm=False
+        )
+        selector_name = string_from_literal_or_selref_address(analyzer, selector_val.value)
         found_calls.append(f"%hook [{class_name} {selector_name}]")
     return found_calls
 
@@ -318,7 +345,8 @@ def does_call_setgid0(executable) -> bool:
 class Executable(object):
     """An executable from the tweak package"""
 
-    def __init__(self, file_bytes: bytes = None, file_path: Path = None) -> None:
+    def __init__(self, original_file_name: str = None, file_bytes: bytes = None, file_path: Path = None) -> None:
+        self.original_file_name = original_file_name
         self.file_path = file_path
         if not file_path and file_bytes:
             temp_file = tempfile.NamedTemporaryFile(mode="wb", delete=False)
@@ -351,7 +379,9 @@ class Executable(object):
         return does_call_setuid0(self) or does_call_setgid0(self)
 
     def __str__(self) -> str:
-        return str(self.binary)
+        if self.original_file_name:
+            return f"Executable({self.original_file_name})"
+        return str(self.file_path)
 
 
 class DebFile(object):
@@ -404,7 +434,7 @@ class DebFile(object):
                     magic = int.from_bytes(file_bytes[0:4], "big")
                     if magic in MachoParser.SUPPORTED_MAG:
                         # Write it to file
-                        executable = Executable(file_bytes)
+                        executable = Executable(original_file_name=filename, file_bytes=file_bytes)
                         self.executable_files.append(executable)
         return self.executable_files
 
@@ -427,6 +457,6 @@ if __name__ == "__main__":
             print_executable_info(executable)
             executable.cleanup()
     else:
-        dylib = Executable(provided_file.read_bytes())
+        dylib = Executable(original_file_name=provided_file, file_bytes=provided_file.read_bytes())
         print_executable_info(dylib)
         dylib.cleanup()
