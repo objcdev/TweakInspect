@@ -51,3 +51,7 @@ with SnippetCompiler(source_code=source_code) as compiled_binary:
         "%hook [SpringBoard initWithStuff:andThings:]",
     ]
 ```
+
+##### Hopper - autonaming hooks
+
+![Hopper script](imgs/hopper.gif)
