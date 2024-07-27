@@ -15,7 +15,7 @@ class TestSetImplementation:
         """
         with SnippetCompiler(source_code=source_code, generator="internal") as compiled_binary:
             exec = Executable(file_path=compiled_binary)
-            assert exec.get_hooks() == ["%hook [UIView viewDidLoad]"]
+            assert exec.get_hooks() == ["%hook -[UIView viewDidLoad]"]
 
     def test_one_hook_no_args_sel_registername(self) -> None:
         source_code = """
@@ -28,7 +28,7 @@ class TestSetImplementation:
         """
         with SnippetCompiler(source_code=source_code, generator="internal") as compiled_binary:
             exec = Executable(file_path=compiled_binary)
-            assert exec.get_hooks() == ["%hook [UIView removeFromSuperview]"]
+            assert exec.get_hooks() == ["%hook -[UIView removeFromSuperview]"]
 
     def test_multiple_hooks_no_args_nsselectorfromstring(self) -> None:
         source_code = """
@@ -51,7 +51,7 @@ class TestSetImplementation:
         with SnippetCompiler(source_code=source_code, generator="internal") as compiled_binary:
             exec = Executable(file_path=compiled_binary)
             assert set(exec.get_hooks()) == set(
-                ["%hook [UIView viewDidLoad]", "%hook [UIView removeFromSuperview]", "%hook [SpringBoard init]"]
+                ["%hook -[UIView viewDidLoad]", "%hook -[UIView removeFromSuperview]", "%hook -[SpringBoard init]"]
             )
 
     def test_multiple_hooks_no_args_selregistername(self) -> None:
@@ -74,5 +74,5 @@ class TestSetImplementation:
         with SnippetCompiler(source_code=source_code, generator="internal") as compiled_binary:
             exec = Executable(file_path=compiled_binary)
             assert set(exec.get_hooks()) == set(
-                ["%hook [UIView viewDidLoad]", "%hook [UIView removeFromSuperview]", "%hook [SpringBoard init]"]
+                ["%hook -[UIView viewDidLoad]", "%hook -[UIView removeFromSuperview]", "%hook -[SpringBoard init]"]
             )

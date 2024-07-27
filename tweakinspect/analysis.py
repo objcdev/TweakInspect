@@ -6,6 +6,7 @@ from strongarm.macho import MachoAnalyzer, ObjcSelector, VirtualMemoryPointer
 from strongarm.objc import ObjcFunctionAnalyzer, ObjcInstruction, RegisterContents
 from strongarm_dataflow.register_contents import RegisterContentsType
 
+from tweakinspect.models import Hook, ObjectiveCTarget
 from tweakinspect.registers import capstone_enum_for_register, register_name_for_capstone_enum
 
 
@@ -169,9 +170,9 @@ def string_from_literal_or_selref_address(analyzer: MachoAnalyzer, address: Virt
     )
 
 
-def find_setImplementations(executable) -> list[HookMapping]:
+def find_setImplementations(executable) -> list[Hook]:
     """Find invocations of method_setImplementation"""
-    found_calls = []
+    found_calls: list[Hook] = []
     analyzer = MachoAnalyzer.get_analyzer(executable.binary)
     method_setImplementation = analyzer.callable_symbol_for_symbol_name("_method_setImplementation")
     if not method_setImplementation:
@@ -206,25 +207,36 @@ def find_setImplementations(executable) -> list[HookMapping]:
         )
         if sel_value.type == RegisterContentsType.IMMEDIATE:
             selector_name = string_from_literal_or_selref_address(analyzer, sel_value.value)
-            new_routine_name = f"%hook [{class_name} {selector_name}]"
 
+            caller_instr = function_analyzer.get_instruction_at_address(invocation.caller_addr)
             replacement_func = _get_register_contents_at_instruction(
                 function_analyzer,
                 "x1",
-                function_analyzer.get_instruction_at_address(invocation.caller_addr),
+                caller_instr,
                 strongarm=False,
             )
+
+            if not class_name or not selector_name or not replacement_func:
+                print(f"Failed to find class_name, selector_name, or replacement_func for {invocation}")
+                continue
+
             found_calls.append(
-                HookMapping(
-                    hooked_function_name=new_routine_name, replacement_hook_function_address=replacement_func.value
+                Hook(
+                    hook_target=ObjectiveCTarget(
+                        class_name=class_name,
+                        method_name=selector_name,
+                    ),
+                    replacement_address=replacement_func.value,
+                    original_address=None,
+                    callsite_address=int(invocation.caller_addr),
                 )
             )
     return found_calls
 
 
-def find_logos_register_hook(executable):
+def find_logos_register_hook(executable) -> list[str]:
     """Find invocations of _logos_register_hook"""
-    found_calls = []
+    found_calls: list[str] = []
     analyzer = MachoAnalyzer.get_analyzer(executable.binary)
 
     register_hook_candidates = [
@@ -264,7 +276,7 @@ def find_logos_register_hook(executable):
 
 def find_MSHookMessageEx(executable) -> list[HookMapping]:
     """Find invocations of MSHookMessageEx"""
-    found_calls = []
+    found_calls: list[HookMapping] = []
     analyzer = MachoAnalyzer.get_analyzer(executable.binary)
     MSHookMessageEx = analyzer.callable_symbol_for_symbol_name("_MSHookMessageEx")
     if not MSHookMessageEx:
@@ -308,7 +320,7 @@ def find_MSHookMessageEx(executable) -> list[HookMapping]:
 
 def find_MSHookFunction(executable) -> list[HookMapping]:
     """Find invocations of MSHookFunction"""
-    found_calls = []
+    found_calls: list[HookMapping] = []
     analyzer = MachoAnalyzer.get_analyzer(executable.binary)
     MSHookFunction = analyzer.callable_symbol_for_symbol_name("_MSHookFunction")
     if not MSHookFunction:
