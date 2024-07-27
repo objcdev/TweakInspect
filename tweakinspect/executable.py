@@ -7,6 +7,7 @@ import unix_ar
 from strongarm.macho import MachoParser
 
 from tweakinspect.analysis import (
+    HookMapping,
     does_call_setgid0,
     does_call_setuid0,
     find_logos_register_hook,
@@ -14,6 +15,7 @@ from tweakinspect.analysis import (
     find_MSHookMessageEx,
     find_setImplementations,
 )
+from tweakinspect.models import Hook
 
 
 class Executable(object):
@@ -28,7 +30,7 @@ class Executable(object):
             temp_file = tempfile.NamedTemporaryFile(mode="wb", delete=False)
             temp_file.write(file_bytes)
             self.file_path = Path(temp_file.name)
-        self.hooked_symbols: list[str] | None = None
+        self.hooked_symbols: list[str | Hook | HookMapping] | None = None
         self.binary = MachoParser(self.file_path).get_arm64_slice()
 
     def cleanup(self) -> None:
@@ -39,11 +41,11 @@ class Executable(object):
         """A list of the methods/functions the executable hooks"""
         if not self.hooked_symbols:
             self.hooked_symbols = []
-            self.hooked_symbols = find_MSHookFunction(self)
+            self.hooked_symbols += find_MSHookFunction(self)
             self.hooked_symbols += find_MSHookMessageEx(self)
             self.hooked_symbols += find_setImplementations(self)
             self.hooked_symbols += find_logos_register_hook(self)
-        return self.hooked_symbols or []
+        return [str(hook) for hook in self.hooked_symbols]
 
     def get_entitlements(self) -> dict:
         """Get the entitlements the executable is signed with"""

@@ -1,6 +1,3 @@
-import shutil
-from pathlib import Path
-
 from tests.compiler import SnippetCompiler
 from tweakinspect.executable import Executable
 
@@ -14,7 +11,6 @@ class TestMsHookFunction:
         }
         """
         with SnippetCompiler(source_code=source_code) as compiled_binary:
-            shutil.copy(compiled_binary.as_posix(), Path("tweakbin.arm64").as_posix())
             exec = Executable(file_path=compiled_binary)
             assert exec.get_hooks() == ["%hookf fopen()"]
 
