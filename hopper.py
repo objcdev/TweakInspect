@@ -1,11 +1,10 @@
 from pathlib import Path
 
-from tweakinspect.executable import Executable
-from tweakinspect.main import find_MSHookFunction, find_MSHookMessageEx, find_setImplementations
+from tweakinspect import Executable, find_MSHookFunction, find_MSHookMessageEx, find_setImplementations
 
 print("TweakInspect hook analysis running")
 
-doc = Document.getCurrentDocument()
+doc = Document.getCurrentDocument()  # noqa: F821
 __TEXT_SEG = doc.getSegmentByName("__TEXT")
 
 p = Path(doc.getExecutableFilePath())

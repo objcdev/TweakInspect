@@ -1,6 +1,5 @@
-from tweakinspect.executable import Executable
-
 from tests.compiler import SnippetCompiler
+from tweakinspect.executable import Executable
 
 
 class TestMsHookMessageEx:

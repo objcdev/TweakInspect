@@ -4,6 +4,7 @@ Install TweakInspect's Hopper script, including the required dependencies.
 Dependencies must already be installed in the current python environment.
 """
 
+import shutil
 from pathlib import Path
 
 import capstone
@@ -44,6 +45,10 @@ for module in modules_to_copy:
     print(f"{module_source_path} -> {module_destination_path}")
 
     try:
-        module_destination_path.symlink_to(module_source_path)
-    except FileExistsError:
+        if module_source_path.is_dir():
+            shutil.copytree(module_source_path, module_destination_path)
+        else:
+            shutil.copy(module_source_path, module_destination_path)
+    except Exception as e:
+        print(f"failed to copy {module_source_path} to {module_destination_path}: {e}")
         pass

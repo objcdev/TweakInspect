@@ -1,9 +1,8 @@
 import shutil
 from pathlib import Path
 
-from tweakinspect.executable import Executable
-
 from tests.compiler import SnippetCompiler
+from tweakinspect.executable import Executable
 
 
 class TestMsHookFunction:
@@ -114,7 +113,7 @@ class TestMsHookFunction:
         %ctor {
             MSHookFunction(((void *)MSFindSymbol(NULL, "_MGGetBoolAnswer")), (void *)fixed_MGGetBoolAnswer, (void **)&orig_MGGetBoolAnswer);
         }
-        """
+        """  # noqa: E501
         with SnippetCompiler(source_code=source_code) as compiled_binary:
             exec = Executable(file_path=compiled_binary)
             assert exec.get_hooks() == ["%hookf MGGetBoolAnswer()"]
@@ -149,7 +148,7 @@ class TestMsHookFunction:
             void *handle = dlopen(NULL, 0);
             MSHookFunction(((void *)dlsym(handle, "_MGCopyAnswer")), (void *)fixed_MGCopyAnswer, (void **)&orig_MGCopyAnswer);
         }
-        """
+        """  # noqa: E501
         with SnippetCompiler(source_code=source_code) as compiled_binary:
             exec = Executable(file_path=compiled_binary)
             assert exec.get_hooks() == ["%hookf MGCopyAnswer()"]

@@ -1,0 +1,7 @@
+strongarm-ios
+unix-ar
+pytest
+flake8
+mypy
+black
+isort

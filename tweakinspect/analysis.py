@@ -1,8 +1,4 @@
-from cgitb import Hook
 from dataclasses import dataclass
-import sys
-from pathlib import Path
-from typing import List, Optional
 
 from capstone import CsInsn
 from capstone.arm64_const import ARM64_OP_IMM, ARM64_REG_SP
@@ -10,7 +6,6 @@ from strongarm.macho import MachoAnalyzer, ObjcSelector, VirtualMemoryPointer
 from strongarm.objc import ObjcFunctionAnalyzer, ObjcInstruction, RegisterContents
 from strongarm_dataflow.register_contents import RegisterContentsType
 
-# from tweakinspect.executable import DebFile
 from tweakinspect.registers import capstone_enum_for_register, register_name_for_capstone_enum
 
 
@@ -119,7 +114,7 @@ def _get_register_contents_at_instruction(
 
 def find_calls_to_function_before_address(
     function_analyzer: ObjcFunctionAnalyzer, function_name: str, end_address: int
-) -> List[ObjcInstruction]:
+) -> list[ObjcInstruction]:
     """Invocations of function_name within the current function scope, from start of function to end_address"""
     function_calls = []
     for call_target in function_analyzer.call_targets:
@@ -131,7 +126,7 @@ def find_calls_to_function_before_address(
 
 def last_invocation_of_function(
     function_analyzer: ObjcFunctionAnalyzer, function_name: str, current_address: int
-) -> Optional[ObjcInstruction]:
+) -> ObjcInstruction | None:
     """The invocation of function_name in closest proximity (and preceding) to current_address"""
     function_calls = find_calls_to_function_before_address(function_analyzer, function_name, current_address)
     if len(function_calls) > 0:
@@ -142,15 +137,15 @@ def last_invocation_of_function(
 
 def read_string_from_register(
     function_analyzer: ObjcFunctionAnalyzer, register: str, callsite: ObjcInstruction
-) -> Optional[str]:
+) -> str | None:
     """Get the string that used in a objc_getClass() invocation"""
     # The previous instruction dealing with the target register
     reg_contents = _get_register_contents_at_instruction(function_analyzer, register, callsite)
     return function_analyzer.binary.read_string_at_address(reg_contents.value)
 
 
-def string_from_literal_or_selref_address(analyzer: MachoAnalyzer, address: VirtualMemoryPointer) -> Optional[str]:
-    def _string_from_literal_or_selref_address(_address) -> Optional[str]:
+def string_from_literal_or_selref_address(analyzer: MachoAnalyzer, address: VirtualMemoryPointer) -> str | None:
+    def _string_from_literal_or_selref_address(_address) -> str | None:
         for func in [
             analyzer.objc_helper.selector_for_selref,
             analyzer.objc_helper.selector_for_selector_literal,
@@ -162,8 +157,10 @@ def string_from_literal_or_selref_address(analyzer: MachoAnalyzer, address: Virt
                     if isinstance(value, ObjcSelector):
                         return value.name
                     return value
-            except:
+            except Exception as exc:
+                print(f"Error reading string from address {_address}: {exc}")
                 pass
+        return None
 
     # TODO:
     # Sometimes there is a selector address without virtual base
@@ -172,7 +169,7 @@ def string_from_literal_or_selref_address(analyzer: MachoAnalyzer, address: Virt
     )
 
 
-def find_setImplementations(executable) -> List[HookMapping]:
+def find_setImplementations(executable) -> list[HookMapping]:
     """Find invocations of method_setImplementation"""
     found_calls = []
     analyzer = MachoAnalyzer.get_analyzer(executable.binary)
@@ -265,7 +262,7 @@ def find_logos_register_hook(executable):
     return found_calls
 
 
-def find_MSHookMessageEx(executable) -> List[HookMapping]:
+def find_MSHookMessageEx(executable) -> list[HookMapping]:
     """Find invocations of MSHookMessageEx"""
     found_calls = []
     analyzer = MachoAnalyzer.get_analyzer(executable.binary)
@@ -309,7 +306,7 @@ def find_MSHookMessageEx(executable) -> List[HookMapping]:
     return found_calls
 
 
-def find_MSHookFunction(executable) -> List[HookMapping]:
+def find_MSHookFunction(executable) -> list[HookMapping]:
     """Find invocations of MSHookFunction"""
     found_calls = []
     analyzer = MachoAnalyzer.get_analyzer(executable.binary)
@@ -416,17 +413,3 @@ def print_executable_info(executable) -> None:
     for hook in executable.get_hooks():
         print(f" {hook}")
     print(f"entitlements: {executable.get_entitlements()}")
-
-
-if __name__ == "__main__":
-    pass
-    # provided_file = Path(sys.argv[1])
-    # if provided_file.suffix == ".deb":
-    #     debfile = DebFile(provided_file)
-    #     for executable in debfile.get_executables():
-    #         print_executable_info(executable)
-    #         executable.cleanup()
-    # else:
-    #     dylib = Executable(original_file_name=provided_file, file_bytes=provided_file.read_bytes())
-    #     print_executable_info(dylib)
-    #     dylib.cleanup()

@@ -2,36 +2,40 @@ import plistlib
 import tarfile
 import tempfile
 from pathlib import Path
-from typing import Dict, List, Optional
 
 import unix_ar
 from strongarm.macho import MachoParser
-from tweakinspect.main import (
-    find_MSHookFunction,
-    find_setImplementations,
+
+from tweakinspect.analysis import (
+    does_call_setgid0,
+    does_call_setuid0,
     find_logos_register_hook,
+    find_MSHookFunction,
     find_MSHookMessageEx,
+    find_setImplementations,
 )
 
 
 class Executable(object):
     """An executable from the tweak package"""
 
-    def __init__(self, original_file_name: str = None, file_bytes: bytes = None, file_path: Path = None) -> None:
+    def __init__(
+        self, original_file_name: str | None = None, file_bytes: bytes | None = None, file_path: Path | None = None
+    ) -> None:
         self.original_file_name = original_file_name
         self.file_path = file_path
-        if not file_path and file_bytes:
+        if file_path is None and file_bytes is not None:
             temp_file = tempfile.NamedTemporaryFile(mode="wb", delete=False)
             temp_file.write(file_bytes)
             self.file_path = Path(temp_file.name)
-        self.hooked_symbols: Optional[List[str]] = None
+        self.hooked_symbols: list[str] | None = None
         self.binary = MachoParser(self.file_path).get_arm64_slice()
 
     def cleanup(self) -> None:
         if self.file_path and self.file_path.exists():
             self.file_path.unlink()
 
-    def get_hooks(self) -> List[str]:
+    def get_hooks(self) -> list[str]:
         """A list of the methods/functions the executable hooks"""
         if not self.hooked_symbols:
             self.hooked_symbols = []
@@ -61,9 +65,9 @@ class DebFile(object):
 
     def __init__(self, deb_path: Path) -> None:
         self.deb_path = deb_path
-        self._extracted_files: Dict[str, bytes] = {}
-        self.data_tarball: Optional[tarfile.TarFile] = None
-        self.executable_files: Optional[List[Executable]] = None
+        self._extracted_files: dict[str, bytes] = {}
+        self.data_tarball: tarfile.TarFile | None = None
+        self.executable_files: list[Executable] | None = None
         self._parse_deb()
 
     def _parse_deb(self) -> None:
@@ -77,13 +81,13 @@ class DebFile(object):
 
         raise Exception("failed to find data archive")
 
-    def all_files(self) -> List[str]:
+    def all_files(self) -> list[str]:
         """The files in the deb that make up the package"""
         if self.data_tarball:
             return [member.name for member in self.data_tarball.getmembers()]
         return []
 
-    def get_file(self, filename: str) -> Optional[bytes]:
+    def get_file(self, filename: str) -> bytes | None:
         """Get a file from the tweak by name"""
         if filename not in self._extracted_files and self.data_tarball:
             try:
@@ -96,7 +100,7 @@ class DebFile(object):
 
         return self._extracted_files.get(filename, None)
 
-    def get_executables(self) -> List[Executable]:
+    def get_executables(self) -> list[Executable]:
         """Mach-Os from the deb"""
         if self.executable_files is None:
             self.executable_files = []
