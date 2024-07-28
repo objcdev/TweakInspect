@@ -1,3 +1,4 @@
+import itertools
 import plistlib
 import tarfile
 import tempfile
@@ -6,16 +7,12 @@ from pathlib import Path
 import unix_ar
 from strongarm.macho import MachoParser
 
-from tweakinspect.analysis import (
-    HookMapping,
-    does_call_setgid0,
-    does_call_setuid0,
-    find_logos_register_hook,
-    find_MSHookFunction,
-    find_MSHookMessageEx,
-    find_setImplementations,
-)
+from tweakinspect.codesearches.logos_register_hook import LogosRegisterHookCodeSearchOperation
+from tweakinspect.codesearches.method_setImplementation import MethodSetImpCodeSearchOperation
+from tweakinspect.codesearches.MSHookFunction import MSHookFunctionCodeSearchOperation
+from tweakinspect.codesearches.MSHookMessageEx import MSHookMessageExCodeSearchOperation
 from tweakinspect.models import Hook
+from tweakinspect.set_id0 import does_call_setgid0, does_call_setuid0
 
 
 class Executable(object):
@@ -30,7 +27,7 @@ class Executable(object):
             temp_file = tempfile.NamedTemporaryFile(mode="wb", delete=False)
             temp_file.write(file_bytes)
             self.file_path = Path(temp_file.name)
-        self.hooked_symbols: list[str | Hook | HookMapping] | None = None
+        self.hooked_symbols: list[Hook] | None = None
         self.binary = MachoParser(self.file_path).get_arm64_slice()
 
     def cleanup(self) -> None:
@@ -40,11 +37,17 @@ class Executable(object):
     def get_hooks(self) -> list[Hook]:
         """A list of the methods/functions the executable hooks"""
         if not self.hooked_symbols:
-            self.hooked_symbols = []
-            self.hooked_symbols += find_MSHookFunction(self)
-            self.hooked_symbols += find_MSHookMessageEx(self)
-            self.hooked_symbols += find_setImplementations(self)
-            self.hooked_symbols += find_logos_register_hook(self)
+            self.hooked_symbols = list(
+                itertools.chain(
+                    *[
+                        MSHookFunctionCodeSearchOperation(self).analyze(),
+                        MSHookMessageExCodeSearchOperation(self).analyze(),
+                        MethodSetImpCodeSearchOperation(self).analyze(),
+                        LogosRegisterHookCodeSearchOperation(self).analyze(),
+                    ]
+                )
+            )
+
         return self.hooked_symbols
 
     def get_entitlements(self) -> dict:

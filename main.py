@@ -1,7 +1,17 @@
 import sys
 from pathlib import Path
 
-from tweakinspect import DebFile, Executable, print_executable_info
+from tweakinspect.executable import DebFile, Executable
+
+
+def print_executable_info(executable: Executable) -> None:
+    does_escalate = executable.does_escalate_to_root()
+    print(f"setuid0/setgid0: {does_escalate}")
+    print("hooks:")
+    for hook in executable.get_hooks():
+        print(f" {hook}")
+    print(f"entitlements: {executable.get_entitlements()}")
+
 
 if __name__ == "__main__":
 

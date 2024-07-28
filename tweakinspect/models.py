@@ -71,4 +71,4 @@ class Hook:
         return str(self) < str(other)
 
     def __eq__(self, other: object) -> bool:
-        return str(self) == str(other)  # and isinstance(other, Hook)
+        return str(self) == str(other)
