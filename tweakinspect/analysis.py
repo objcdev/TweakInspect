@@ -5,9 +5,10 @@ from capstone.arm64_const import ARM64_OP_IMM, ARM64_REG_SP
 from strongarm.macho import MachoAnalyzer, ObjcSelector, VirtualMemoryPointer
 from strongarm.objc import ObjcFunctionAnalyzer, ObjcInstruction, RegisterContents, RegisterContentsType
 
+from tweakinspect.codesearches.method_setImplementation import MethodSetImpCodeSearchOperation
+from tweakinspect.codesearches.MSHookMessageEx import MSHookMessageExCodeSearchOperation
 from tweakinspect.models import Hook
 from tweakinspect.registers import capstone_enum_for_register, register_name_for_capstone_enum
-from tweakinspect.codesearches.method_setImplementation import MethodSetImpCodeSearchOperation
 
 
 @dataclass
@@ -214,48 +215,9 @@ def find_setImplementations(executable) -> list[Hook]:
     return MethodSetImpCodeSearchOperation(executable).analyze()
 
 
-def find_MSHookMessageEx(executable) -> list[HookMapping]:
+def find_MSHookMessageEx(executable) -> list[Hook]:
     """Find invocations of MSHookMessageEx"""
-    found_calls: list[HookMapping] = []
-    analyzer = MachoAnalyzer.get_analyzer(executable.binary)
-    MSHookMessageEx = analyzer.callable_symbol_for_symbol_name("_MSHookMessageEx")
-    if not MSHookMessageEx:
-        return found_calls
-
-    invocations = analyzer.calls_to(MSHookMessageEx.address)
-    for invocation in invocations:
-
-        function_analyzer = ObjcFunctionAnalyzer.get_function_analyzer(
-            executable.binary, invocation.caller_func_start_address
-        )
-        # The first arg is the Class on which a method will be intrumented.
-        # Look for a call to objc_getClass()
-        getClass_invocation = last_invocation_of_function(function_analyzer, "objc_getClass", invocation.caller_addr)
-        if not getClass_invocation:
-            continue
-
-        # Found objc_getClass(), x0 should be a string that is the class name
-        class_name = read_string_from_register(function_analyzer, "x0", getClass_invocation)
-
-        # The next arg is a selector that is the Method to instrument.
-        # It should be in x1
-        instructions = function_analyzer.get_instruction_at_address(invocation.caller_addr)
-        parsed_instructions = ObjcInstruction.parse_instruction(function_analyzer, instructions)
-        selector_val = _get_register_contents_at_instruction(
-            function_analyzer, "x1", parsed_instructions.raw_instr, strongarm=False
-        )
-        selector_name = string_from_literal_or_selref_address(analyzer, selector_val.value)
-        new_routine_name = f"%hook [{class_name} {selector_name}]"
-
-        replacement_func = _get_register_contents_at_instruction(
-            function_analyzer, "x2", parsed_instructions.raw_instr, strongarm=False
-        )
-
-        found_calls.append(
-            HookMapping(hooked_function_name=new_routine_name, replacement_hook_function_address=replacement_func.value)
-        )
-
-    return found_calls
+    return MSHookMessageExCodeSearchOperation(executable).analyze()
 
 
 def find_MSHookFunction(executable) -> list[HookMapping]:

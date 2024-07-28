@@ -6,8 +6,8 @@ from capstone.arm64 import ARM64_OP_IMM, ARM64_REG_SP
 from strongarm.macho import MachoAnalyzer, ObjcSelector
 from strongarm.objc import ObjcFunctionAnalyzer, ObjcInstruction, RegisterContents, RegisterContentsType
 
-from tweakinspect.registers import capstone_enum_for_register, register_name_for_capstone_enum
 from tweakinspect.models import Hook
+from tweakinspect.registers import capstone_enum_for_register, register_name_for_capstone_enum
 
 if TYPE_CHECKING:
     from tweakinspect.executable import Executable
