@@ -19,6 +19,9 @@ class TestMsHookMessageEx:
             assert isinstance(hook.target, ObjectiveCTarget)
             assert hook.target.class_name == "SpringBoard"
             assert hook.target.method_name == "test"
+            assert hook.callsite_address >= 0x4000
+            assert hook.replacement_address >= 0x4000
+            assert hook.original_address >= 0x4000
             assert str(hook) == "%hook -[SpringBoard test]"
 
     def test_one_hook_with_args(self) -> None:
@@ -36,6 +39,9 @@ class TestMsHookMessageEx:
             assert isinstance(hook.target, ObjectiveCTarget)
             assert hook.target.class_name == "SpringBoard"
             assert hook.target.method_name == "initWithStuff:andThings:"
+            assert hook.callsite_address >= 0x4000
+            assert hook.replacement_address >= 0x4000
+            assert hook.original_address >= 0x4000
             assert str(hook) == "%hook -[SpringBoard initWithStuff:andThings:]"
 
     def test_multiple_hooks_no_args(self) -> None:
@@ -55,20 +61,29 @@ class TestMsHookMessageEx:
             hooks: list[Hook] = sorted(exec.get_hooks())
             assert len(hooks) == 3
 
-            hook2 = hooks[0]
-            assert isinstance(hook2.target, ObjectiveCTarget)
-            assert hook2.target.class_name == "CarPlay"
-            assert hook2.target.method_name == "setupDock"
-            assert str(hook2) == "%hook -[CarPlay setupDock]"
-
-            hook1 = hooks[1]
+            hook1 = hooks[0]
             assert isinstance(hook1.target, ObjectiveCTarget)
-            assert hook1.target.class_name == "SpringBoard"
-            assert hook1.target.method_name == "launchHomescreen"
-            assert str(hook1) == "%hook -[SpringBoard launchHomescreen]"
+            assert hook1.target.class_name == "CarPlay"
+            assert hook1.target.method_name == "setupDock"
+            assert hook1.callsite_address >= 0x4000
+            assert hook1.replacement_address >= 0x4000
+            assert hook1.original_address >= 0x4000
+            assert str(hook1) == "%hook -[CarPlay setupDock]"
+
+            hook2 = hooks[1]
+            assert isinstance(hook2.target, ObjectiveCTarget)
+            assert hook2.target.class_name == "SpringBoard"
+            assert hook2.target.method_name == "launchHomescreen"
+            assert hook2.callsite_address >= 0x4000
+            assert hook2.replacement_address >= 0x4000
+            assert hook2.original_address >= 0x4000
+            assert str(hook2) == "%hook -[SpringBoard launchHomescreen]"
 
             hook3 = hooks[2]
             assert isinstance(hook3.target, ObjectiveCTarget)
             assert hook3.target.class_name == "backboardd"
             assert hook3.target.method_name == "reboot"
+            assert hook3.callsite_address >= 0x4000
+            assert hook3.replacement_address >= 0x4000
+            assert hook3.original_address >= 0x4000
             assert str(hook3) == "%hook -[backboardd reboot]"

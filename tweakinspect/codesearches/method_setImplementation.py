@@ -91,6 +91,6 @@ class MethodSetImpCodeSearchOperation(FunctionHookCodeSearchOperation):
                 method_name=selector_name,
             ),
             replacement_address=replacement_imp_reg.value,
-            original_address=None,
+            original_address=0,
             callsite_address=int(invocation.caller_addr),
         )

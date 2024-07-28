@@ -81,7 +81,7 @@ class MSHookMessageExCodeSearchOperation(FunctionHookCodeSearchOperation):
             strongarm=False,
         )
 
-        original_func_addr: int | None = None
+        original_func_addr = 0
         if original_func_reg and original_func_reg.type == RegisterContentsType.IMMEDIATE:
             original_func_addr = original_func_reg.value
         else:

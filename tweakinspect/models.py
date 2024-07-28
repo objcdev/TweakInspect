@@ -56,7 +56,7 @@ class Hook:
     replacement_address: int
 
     # The address of the original implementation of the hooked item
-    original_address: int | None
+    original_address: int
 
     # The address where the hook is performed
     callsite_address: int
