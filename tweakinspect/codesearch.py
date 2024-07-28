@@ -1,18 +1,21 @@
 from abc import ABC, abstractmethod
-from cgitb import Hook
+from typing import TYPE_CHECKING
 
 from capstone import CsInsn
 from capstone.arm64 import ARM64_OP_IMM, ARM64_REG_SP
 from strongarm.macho import MachoAnalyzer, ObjcSelector
 from strongarm.objc import ObjcFunctionAnalyzer, ObjcInstruction, RegisterContents, RegisterContentsType
 
-from tweakinspect.executable import Executable
 from tweakinspect.registers import capstone_enum_for_register, register_name_for_capstone_enum
+from tweakinspect.models import Hook
+
+if TYPE_CHECKING:
+    from tweakinspect.executable import Executable
 
 
 class FunctionHookCodeSearchOperation(ABC):
 
-    def __init__(self, executable: Executable) -> None:
+    def __init__(self, executable: "Executable") -> None:
         self.executable = executable
         self.macho_analyzer = MachoAnalyzer(executable.binary)
 

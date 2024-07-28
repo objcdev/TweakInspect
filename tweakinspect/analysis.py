@@ -5,7 +5,9 @@ from capstone.arm64_const import ARM64_OP_IMM, ARM64_REG_SP
 from strongarm.macho import MachoAnalyzer, ObjcSelector, VirtualMemoryPointer
 from strongarm.objc import ObjcFunctionAnalyzer, ObjcInstruction, RegisterContents, RegisterContentsType
 
+from tweakinspect.models import Hook
 from tweakinspect.registers import capstone_enum_for_register, register_name_for_capstone_enum
+from tweakinspect.codesearches.method_setImplementation import MethodSetImpCodeSearchOperation
 
 
 @dataclass
@@ -206,6 +208,10 @@ def find_logos_register_hook(executable) -> list[str]:
 
         found_calls.append(f"%hook [{class_name} {selector.name}]")
     return found_calls
+
+
+def find_setImplementations(executable) -> list[Hook]:
+    return MethodSetImpCodeSearchOperation(executable).analyze()
 
 
 def find_MSHookMessageEx(executable) -> list[HookMapping]:
