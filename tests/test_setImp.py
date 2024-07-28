@@ -1,5 +1,6 @@
 from tests.compiler import SnippetCompiler
 from tweakinspect.executable import Executable
+from tweakinspect.models import Hook, ObjectiveCTarget
 
 
 class TestSetImplementation:
@@ -15,7 +16,17 @@ class TestSetImplementation:
         """
         with SnippetCompiler(source_code=source_code, generator="internal") as compiled_binary:
             exec = Executable(file_path=compiled_binary)
-            assert exec.get_hooks() == ["%hook [UIView viewDidLoad]"]
+            hooks: list[Hook] = sorted(exec.get_hooks())
+            assert len(hooks) == 1
+
+            hook = hooks[0]
+            assert isinstance(hook.target, ObjectiveCTarget)
+            assert hook.target.class_name == "UIView"
+            assert hook.target.method_name == "viewDidLoad"
+            assert hook.callsite_address >= 0x4000
+            assert hook.replacement_address >= 0x4000
+            assert hook.original_address == 0
+            assert str(hook) == "%hook -[UIView viewDidLoad]"
 
     def test_one_hook_no_args_sel_registername(self) -> None:
         source_code = """
@@ -28,7 +39,17 @@ class TestSetImplementation:
         """
         with SnippetCompiler(source_code=source_code, generator="internal") as compiled_binary:
             exec = Executable(file_path=compiled_binary)
-            assert exec.get_hooks() == ["%hook [UIView removeFromSuperview]"]
+            hooks: list[Hook] = sorted(exec.get_hooks())
+            assert len(hooks) == 1
+
+            hook = hooks[0]
+            assert isinstance(hook.target, ObjectiveCTarget)
+            assert hook.target.class_name == "UIView"
+            assert hook.target.method_name == "removeFromSuperview"
+            assert hook.callsite_address >= 0x4000
+            assert hook.replacement_address >= 0x4000
+            assert hook.original_address == 0
+            assert str(hook) == "%hook -[UIView removeFromSuperview]"
 
     def test_multiple_hooks_no_args_nsselectorfromstring(self) -> None:
         source_code = """
@@ -50,9 +71,35 @@ class TestSetImplementation:
         """
         with SnippetCompiler(source_code=source_code, generator="internal") as compiled_binary:
             exec = Executable(file_path=compiled_binary)
-            assert set(exec.get_hooks()) == set(
-                ["%hook [UIView viewDidLoad]", "%hook [UIView removeFromSuperview]", "%hook [SpringBoard init]"]
-            )
+            hooks: list[Hook] = sorted(exec.get_hooks())
+            assert len(hooks) == 3
+
+            hook1 = hooks[0]
+            assert isinstance(hook1.target, ObjectiveCTarget)
+            assert hook1.target.class_name == "SpringBoard"
+            assert hook1.target.method_name == "init"
+            assert hook1.callsite_address >= 0x4000
+            assert hook1.replacement_address >= 0x4000
+            assert hook1.original_address == 0
+            assert str(hook1) == "%hook -[SpringBoard init]"
+
+            hook2 = hooks[1]
+            assert isinstance(hook2.target, ObjectiveCTarget)
+            assert hook2.target.class_name == "UIView"
+            assert hook2.target.method_name == "removeFromSuperview"
+            assert hook2.callsite_address >= 0x4000
+            assert hook2.replacement_address >= 0x4000
+            assert hook2.original_address == 0
+            assert str(hook2) == "%hook -[UIView removeFromSuperview]"
+
+            hook3 = hooks[2]
+            assert isinstance(hook3.target, ObjectiveCTarget)
+            assert hook3.target.class_name == "UIView"
+            assert hook3.target.method_name == "viewDidLoad"
+            assert hook3.callsite_address >= 0x4000
+            assert hook3.replacement_address >= 0x4000
+            assert hook3.original_address == 0
+            assert str(hook3) == "%hook -[UIView viewDidLoad]"
 
     def test_multiple_hooks_no_args_selregistername(self) -> None:
         source_code = """
@@ -73,6 +120,32 @@ class TestSetImplementation:
         """
         with SnippetCompiler(source_code=source_code, generator="internal") as compiled_binary:
             exec = Executable(file_path=compiled_binary)
-            assert set(exec.get_hooks()) == set(
-                ["%hook [UIView viewDidLoad]", "%hook [UIView removeFromSuperview]", "%hook [SpringBoard init]"]
-            )
+            hooks: list[Hook] = sorted(exec.get_hooks())
+            assert len(hooks) == 3
+
+            hook1 = hooks[0]
+            assert isinstance(hook1.target, ObjectiveCTarget)
+            assert hook1.target.class_name == "SpringBoard"
+            assert hook1.target.method_name == "init"
+            assert hook1.callsite_address >= 0x4000
+            assert hook1.replacement_address >= 0x4000
+            assert hook1.original_address == 0
+            assert str(hook1) == "%hook -[SpringBoard init]"
+
+            hook2 = hooks[1]
+            assert isinstance(hook2.target, ObjectiveCTarget)
+            assert hook2.target.class_name == "UIView"
+            assert hook2.target.method_name == "removeFromSuperview"
+            assert hook2.callsite_address >= 0x4000
+            assert hook2.replacement_address >= 0x4000
+            assert hook2.original_address == 0
+            assert str(hook2) == "%hook -[UIView removeFromSuperview]"
+
+            hook3 = hooks[2]
+            assert isinstance(hook3.target, ObjectiveCTarget)
+            assert hook3.target.class_name == "UIView"
+            assert hook3.target.method_name == "viewDidLoad"
+            assert hook3.callsite_address >= 0x4000
+            assert hook3.replacement_address >= 0x4000
+            assert hook3.original_address == 0
+            assert str(hook3) == "%hook -[UIView viewDidLoad]"

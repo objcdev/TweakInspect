@@ -1,8 +1,6 @@
-import shutil
-from pathlib import Path
-
 from tests.compiler import SnippetCompiler
 from tweakinspect.executable import Executable
+from tweakinspect.models import FunctionTarget, Hook
 
 
 class TestMsHookFunction:
@@ -14,9 +12,17 @@ class TestMsHookFunction:
         }
         """
         with SnippetCompiler(source_code=source_code) as compiled_binary:
-            shutil.copy(compiled_binary.as_posix(), Path("tweakbin.arm64").as_posix())
             exec = Executable(file_path=compiled_binary)
-            assert exec.get_hooks() == ["%hookf fopen()"]
+            hooks: list[Hook] = sorted(exec.get_hooks())
+            assert len(hooks) == 1
+
+            hook = hooks[0]
+            assert isinstance(hook.target, FunctionTarget)
+            assert hook.target.target_function_name == "fopen"
+            assert hook.callsite_address >= 0x4000
+            assert hook.replacement_address >= 0x4000
+            assert hook.original_address == 0
+            assert str(hook) == "%hookf fopen()"
 
     def test_multiple_hookf_linked_functions(self) -> None:
         source_code = """
@@ -33,7 +39,32 @@ class TestMsHookFunction:
         """
         with SnippetCompiler(source_code=source_code) as compiled_binary:
             exec = Executable(file_path=compiled_binary)
-            assert exec.get_hooks() == ["%hookf fopen()", "%hookf fclose()", "%hookf fseek()"]
+            hooks: list[Hook] = sorted(exec.get_hooks())
+            assert len(hooks) == 3
+
+            hook1 = hooks[0]
+            assert isinstance(hook1.target, FunctionTarget)
+            assert hook1.target.target_function_name == "fclose"
+            assert hook1.callsite_address >= 0x4000
+            assert hook1.replacement_address >= 0x4000
+            assert hook1.original_address == 0
+            assert str(hook1) == "%hookf fclose()"
+
+            hook2 = hooks[1]
+            assert isinstance(hook2.target, FunctionTarget)
+            assert hook2.target.target_function_name == "fopen"
+            assert hook2.callsite_address >= 0x4000
+            assert hook2.replacement_address >= 0x4000
+            assert hook2.original_address == 0
+            assert str(hook2) == "%hookf fopen()"
+
+            hook3 = hooks[2]
+            assert isinstance(hook3.target, FunctionTarget)
+            assert hook3.target.target_function_name == "fseek"
+            assert hook3.callsite_address >= 0x4000
+            assert hook3.replacement_address >= 0x4000
+            assert hook3.original_address == 0
+            assert str(hook3) == "%hookf fseek()"
 
     # def test_hookf_dynamic_lookup(self) -> None:
     #     source_code = """
@@ -75,7 +106,16 @@ class TestMsHookFunction:
         """
         with SnippetCompiler(source_code=source_code) as compiled_binary:
             exec = Executable(file_path=compiled_binary)
-            assert exec.get_hooks() == ["%hookf close()"]
+            hooks: list[Hook] = sorted(exec.get_hooks())
+            assert len(hooks) == 1
+
+            hook = hooks[0]
+            assert isinstance(hook.target, FunctionTarget)
+            assert hook.target.target_function_name == "close"
+            assert hook.callsite_address >= 0x4000
+            assert hook.replacement_address >= 0x4000
+            assert hook.original_address == 0
+            assert str(hook) == "%hookf close()"
 
     def test_multiple_mshookfunction_linked_functions(self) -> None:
         source_code = """
@@ -101,7 +141,32 @@ class TestMsHookFunction:
         """
         with SnippetCompiler(source_code=source_code) as compiled_binary:
             exec = Executable(file_path=compiled_binary)
-            assert set(exec.get_hooks()) == set(["%hookf open()", "%hookf lseek()", "%hookf close()"])
+            hooks: list[Hook] = sorted(exec.get_hooks())
+            assert len(hooks) == 3
+
+            hook1 = hooks[0]
+            assert isinstance(hook1.target, FunctionTarget)
+            assert hook1.target.target_function_name == "close"
+            assert hook1.callsite_address >= 0x4000
+            assert hook1.replacement_address >= 0x4000
+            assert hook1.original_address == 0
+            assert str(hook1) == "%hookf close()"
+
+            hook2 = hooks[1]
+            assert isinstance(hook2.target, FunctionTarget)
+            assert hook2.target.target_function_name == "lseek"
+            assert hook2.callsite_address >= 0x4000
+            assert hook2.replacement_address >= 0x4000
+            assert hook2.original_address == 0
+            assert str(hook2) == "%hookf lseek()"
+
+            hook3 = hooks[2]
+            assert isinstance(hook3.target, FunctionTarget)
+            assert hook3.target.target_function_name == "open"
+            assert hook3.callsite_address >= 0x4000
+            assert hook3.replacement_address >= 0x4000
+            assert hook3.original_address == 0
+            assert str(hook3) == "%hookf open()"
 
     def test_mshookfunction_msfindsymbol(self) -> None:
         source_code = """
@@ -116,7 +181,16 @@ class TestMsHookFunction:
         """  # noqa: E501
         with SnippetCompiler(source_code=source_code) as compiled_binary:
             exec = Executable(file_path=compiled_binary)
-            assert exec.get_hooks() == ["%hookf MGGetBoolAnswer()"]
+            hooks: list[Hook] = sorted(exec.get_hooks())
+            assert len(hooks) == 1
+
+            hook = hooks[0]
+            assert isinstance(hook.target, FunctionTarget)
+            assert hook.target.target_function_name == "MGGetBoolAnswer"
+            assert hook.callsite_address >= 0x4000
+            assert hook.replacement_address >= 0x4000
+            assert hook.original_address == 0
+            assert str(hook) == "%hookf MGGetBoolAnswer()"
 
     def test_multiple_mshookfunction_msfindsymbol(self) -> None:
         source_code = """
@@ -134,7 +208,24 @@ class TestMsHookFunction:
         """
         with SnippetCompiler(source_code=source_code) as compiled_binary:
             exec = Executable(file_path=compiled_binary)
-            assert exec.get_hooks() == ["%hookf MGGetBoolAnswer()", "%hookf MGCopyAnswer()"]
+            hooks: list[Hook] = sorted(exec.get_hooks())
+            assert len(hooks) == 2
+
+            hook1 = hooks[0]
+            assert isinstance(hook1.target, FunctionTarget)
+            assert hook1.target.target_function_name == "MGCopyAnswer"
+            assert hook1.callsite_address >= 0x4000
+            assert hook1.replacement_address >= 0x4000
+            assert hook1.original_address == 0
+            assert str(hook1) == "%hookf MGCopyAnswer()"
+
+            hook2 = hooks[1]
+            assert isinstance(hook2.target, FunctionTarget)
+            assert hook2.target.target_function_name == "MGGetBoolAnswer"
+            assert hook2.callsite_address >= 0x4000
+            assert hook2.replacement_address >= 0x4000
+            assert hook2.original_address == 0
+            assert str(hook2) == "%hookf MGGetBoolAnswer()"
 
     def test_mshookfunction_dlsym(self) -> None:
         source_code = """
@@ -151,7 +242,16 @@ class TestMsHookFunction:
         """  # noqa: E501
         with SnippetCompiler(source_code=source_code) as compiled_binary:
             exec = Executable(file_path=compiled_binary)
-            assert exec.get_hooks() == ["%hookf MGCopyAnswer()"]
+            hooks: list[Hook] = sorted(exec.get_hooks())
+            assert len(hooks) == 1
+
+            hook = hooks[0]
+            assert isinstance(hook.target, FunctionTarget)
+            assert hook.target.target_function_name == "MGCopyAnswer"
+            assert hook.callsite_address >= 0x4000
+            assert hook.replacement_address >= 0x4000
+            assert hook.original_address == 0
+            assert str(hook) == "%hookf MGCopyAnswer()"
 
     def test_multiple_mshookfunction_dlsym(self) -> None:
         source_code = """
@@ -171,7 +271,24 @@ class TestMsHookFunction:
         """
         with SnippetCompiler(source_code=source_code) as compiled_binary:
             exec = Executable(file_path=compiled_binary)
-            assert exec.get_hooks() == ["%hookf MGGetBoolAnswer()", "%hookf MGCopyAnswer()"]
+            hooks: list[Hook] = sorted(exec.get_hooks())
+            assert len(hooks) == 2
+
+            hook1 = hooks[0]
+            assert isinstance(hook1.target, FunctionTarget)
+            assert hook1.target.target_function_name == "MGCopyAnswer"
+            assert hook1.callsite_address >= 0x4000
+            assert hook1.replacement_address >= 0x4000
+            assert hook1.original_address == 0
+            assert str(hook1) == "%hookf MGCopyAnswer()"
+
+            hook2 = hooks[1]
+            assert isinstance(hook2.target, FunctionTarget)
+            assert hook2.target.target_function_name == "MGGetBoolAnswer"
+            assert hook2.callsite_address >= 0x4000
+            assert hook2.replacement_address >= 0x4000
+            assert hook2.original_address == 0
+            assert str(hook2) == "%hookf MGGetBoolAnswer()"
 
     def test_hookf_mshookfunction_dlsym_msfindsymbol(self) -> None:
         source_code = """
@@ -194,6 +311,29 @@ class TestMsHookFunction:
         """
         with SnippetCompiler(source_code=source_code) as compiled_binary:
             exec = Executable(file_path=compiled_binary)
-            assert set(exec.get_hooks()) == set(
-                ["%hookf fclose()", "%hookf MGGetBoolAnswer()", "%hookf MGCopyAnswer()"]
-            )
+            hooks: list[Hook] = sorted(exec.get_hooks())
+            assert len(hooks) == 3
+
+            hook1 = hooks[0]
+            assert isinstance(hook1.target, FunctionTarget)
+            assert hook1.target.target_function_name == "MGCopyAnswer"
+            assert hook1.callsite_address >= 0x4000
+            assert hook1.replacement_address >= 0x4000
+            assert hook1.original_address == 0
+            assert str(hook1) == "%hookf MGCopyAnswer()"
+
+            hook2 = hooks[1]
+            assert isinstance(hook2.target, FunctionTarget)
+            assert hook2.target.target_function_name == "MGGetBoolAnswer"
+            assert hook2.callsite_address >= 0x4000
+            assert hook2.replacement_address >= 0x4000
+            assert hook2.original_address == 0
+            assert str(hook2) == "%hookf MGGetBoolAnswer()"
+
+            hook3 = hooks[2]
+            assert isinstance(hook3.target, FunctionTarget)
+            assert hook3.target.target_function_name == "fclose"
+            assert hook3.callsite_address >= 0x4000
+            assert hook3.replacement_address >= 0x4000
+            assert hook3.original_address == 0
+            assert str(hook3) == "%hookf fclose()"
