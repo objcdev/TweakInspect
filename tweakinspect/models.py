@@ -50,7 +50,7 @@ class ObjectiveCTarget(FunctionTarget):
 class Hook:
 
     # The address or name of the item being hooked
-    hook_target: FunctionTarget
+    target: FunctionTarget
 
     # The address of the replacement function
     replacement_address: int
@@ -62,4 +62,13 @@ class Hook:
     callsite_address: int
 
     def __str__(self) -> str:
-        return self.hook_target.hook_name
+        return self.target.hook_name
+
+    def __hash__(self) -> int:
+        return hash(str(self))
+
+    def __lt__(self, other: object) -> bool:
+        return str(self) < str(other)
+
+    def __eq__(self, other: object) -> bool:
+        return str(self) == str(other)  # and isinstance(other, Hook)

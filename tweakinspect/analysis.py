@@ -3,10 +3,8 @@ from dataclasses import dataclass
 from capstone import CsInsn
 from capstone.arm64_const import ARM64_OP_IMM, ARM64_REG_SP
 from strongarm.macho import MachoAnalyzer, ObjcSelector, VirtualMemoryPointer
-from strongarm.objc import ObjcFunctionAnalyzer, ObjcInstruction, RegisterContents
-from strongarm_dataflow.register_contents import RegisterContentsType
+from strongarm.objc import ObjcFunctionAnalyzer, ObjcInstruction, RegisterContents, RegisterContentsType
 
-from tweakinspect.models import Hook, ObjectiveCTarget
 from tweakinspect.registers import capstone_enum_for_register, register_name_for_capstone_enum
 
 
@@ -168,70 +166,6 @@ def string_from_literal_or_selref_address(analyzer: MachoAnalyzer, address: Virt
     return _string_from_literal_or_selref_address(address) or _string_from_literal_or_selref_address(
         address + 0x100000000
     )
-
-
-def find_setImplementations(executable) -> list[Hook]:
-    """Find invocations of method_setImplementation"""
-    found_calls: list[Hook] = []
-    analyzer = MachoAnalyzer.get_analyzer(executable.binary)
-    method_setImplementation = analyzer.callable_symbol_for_symbol_name("_method_setImplementation")
-    if not method_setImplementation:
-        return found_calls
-
-    invocations = analyzer.calls_to(method_setImplementation.address)
-    for idx, invocation in enumerate(invocations):
-        function_analyzer = ObjcFunctionAnalyzer.get_function_analyzer(
-            executable.binary, invocation.caller_func_start_address
-        )
-        # The first arg is a Class
-        # Look for a call to objc_getClass()
-        getClass_invocation = last_invocation_of_function(function_analyzer, "objc_getClass", invocation.caller_addr)
-        if not getClass_invocation:
-            continue
-
-        # Found objc_getClass(), x0 should be a string that is the class name
-        class_name = read_string_from_register(function_analyzer, "x0", getClass_invocation)
-        # The second arg is a Method
-        # Look for calls to getInstanceMethod/getClassMethod
-        getMethod_invocations = find_calls_to_function_before_address(
-            function_analyzer, "class_getInstanceMethod", invocation.caller_addr
-        )
-        if not getMethod_invocations:
-            continue
-        correlated_idx = max(idx, len(getMethod_invocations) - 1)
-        getMethod_invocation = getMethod_invocations[correlated_idx]
-
-        # x1 should be a selector that is the method to get
-        sel_value = _get_register_contents_at_instruction(
-            function_analyzer, "x1", getMethod_invocation.raw_instr, strongarm=False
-        )
-        if sel_value.type == RegisterContentsType.IMMEDIATE:
-            selector_name = string_from_literal_or_selref_address(analyzer, sel_value.value)
-
-            caller_instr = function_analyzer.get_instruction_at_address(invocation.caller_addr)
-            replacement_func = _get_register_contents_at_instruction(
-                function_analyzer,
-                "x1",
-                caller_instr,
-                strongarm=False,
-            )
-
-            if not class_name or not selector_name or not replacement_func:
-                print(f"Failed to find class_name, selector_name, or replacement_func for {invocation}")
-                continue
-
-            found_calls.append(
-                Hook(
-                    hook_target=ObjectiveCTarget(
-                        class_name=class_name,
-                        method_name=selector_name,
-                    ),
-                    replacement_address=replacement_func.value,
-                    original_address=None,
-                    callsite_address=int(invocation.caller_addr),
-                )
-            )
-    return found_calls
 
 
 def find_logos_register_hook(executable) -> list[str]:

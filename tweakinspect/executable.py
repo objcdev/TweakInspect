@@ -37,7 +37,7 @@ class Executable(object):
         if self.file_path and self.file_path.exists():
             self.file_path.unlink()
 
-    def get_hooks(self) -> list[str]:
+    def get_hooks(self) -> list[Hook]:
         """A list of the methods/functions the executable hooks"""
         if not self.hooked_symbols:
             self.hooked_symbols = []
@@ -45,7 +45,7 @@ class Executable(object):
             self.hooked_symbols += find_MSHookMessageEx(self)
             self.hooked_symbols += find_setImplementations(self)
             self.hooked_symbols += find_logos_register_hook(self)
-        return [str(hook) for hook in self.hooked_symbols]
+        return self.hooked_symbols
 
     def get_entitlements(self) -> dict:
         """Get the entitlements the executable is signed with"""
