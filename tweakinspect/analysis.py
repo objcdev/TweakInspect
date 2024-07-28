@@ -5,6 +5,7 @@ from capstone.arm64_const import ARM64_OP_IMM, ARM64_REG_SP
 from strongarm.macho import MachoAnalyzer, ObjcSelector, VirtualMemoryPointer
 from strongarm.objc import ObjcFunctionAnalyzer, ObjcInstruction, RegisterContents, RegisterContentsType
 
+from tweakinspect.codesearches.logos_register_hook import LogosRegisterHookCodeSearchOperation
 from tweakinspect.codesearches.method_setImplementation import MethodSetImpCodeSearchOperation
 from tweakinspect.codesearches.MSHookMessageEx import MSHookMessageExCodeSearchOperation
 from tweakinspect.models import Hook
@@ -171,44 +172,9 @@ def string_from_literal_or_selref_address(analyzer: MachoAnalyzer, address: Virt
     )
 
 
-def find_logos_register_hook(executable) -> list[str]:
+def find_logos_register_hook(executable) -> list[Hook]:
     """Find invocations of _logos_register_hook"""
-    found_calls: list[str] = []
-    analyzer = MachoAnalyzer.get_analyzer(executable.binary)
-
-    register_hook_candidates = [
-        function for function in analyzer.exported_symbol_names_to_pointers if "logos_register_hook" in function
-    ]
-    if not register_hook_candidates:
-        return found_calls
-
-    _logos_register_hook = analyzer.callable_symbol_for_symbol_name(register_hook_candidates[0])
-    if not _logos_register_hook:
-        return found_calls
-
-    invocations = analyzer.calls_to(_logos_register_hook.address)
-    for invocation in invocations:
-        function_analyzer = ObjcFunctionAnalyzer.get_function_analyzer(
-            executable.binary, invocation.caller_func_start_address
-        )
-
-        # The first arg is a Class
-        # Look for a call to objc_getClass()
-        getClass_invocation = last_invocation_of_function(function_analyzer, "objc_getClass", invocation.caller_addr)
-        if not getClass_invocation:
-            continue
-
-        # Found objc_getClass(), x0 should be a string that is the class name
-        class_name = read_string_from_register(function_analyzer, "x0", getClass_invocation)
-
-        # The second arg is a selector
-        instruction = function_analyzer.get_instruction_at_address(invocation.caller_addr)
-        parsed_instructions = ObjcInstruction.parse_instruction(function_analyzer, instruction)
-        x1 = function_analyzer.get_register_contents_at_instruction("x1", parsed_instructions)
-        selector = analyzer.objc_helper.selector_for_selref(x1.value)
-
-        found_calls.append(f"%hook [{class_name} {selector.name}]")
-    return found_calls
+    return LogosRegisterHookCodeSearchOperation(executable).analyze()
 
 
 def find_setImplementations(executable) -> list[Hook]:

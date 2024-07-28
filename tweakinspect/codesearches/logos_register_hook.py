@@ -7,17 +7,21 @@ from tweakinspect.codesearch import FunctionHookCodeSearchOperation
 from tweakinspect.models import Hook, ObjectiveCTarget
 
 
-class MSHookMessageExCodeSearchOperation(FunctionHookCodeSearchOperation):
+class LogosRegisterHookCodeSearchOperation(FunctionHookCodeSearchOperation):
     def analyze(self) -> list[Hook]:
 
-        # Find the address of MSHookMessageEx()
-        MSHookMessageEx_addr = self.address_for_symbol_name_in_executable("_MSHookMessageEx")
-        if not MSHookMessageEx_addr:
-            # The binary does not use MSHookMessageEx()
+        analyzer = self.macho_analyzer
+        register_hook_candidates = [
+            func_name for func_name in analyzer.exported_symbol_names_to_pointers if "logos_register_hook" in func_name
+        ]
+        if not register_hook_candidates:
             return []
 
-        # Analyze every invocation of MSHookMessageEx()
-        invocations = self.macho_analyzer.calls_to(MSHookMessageEx_addr)
+        _logos_register_hook = analyzer.callable_symbol_for_symbol_name(register_hook_candidates[0])
+        if not _logos_register_hook:
+            return []
+
+        invocations = analyzer.calls_to(_logos_register_hook.address)
         results: list[Hook] = []
         for invocation in invocations:
             result = self.analyze_invocation(invocation)
@@ -30,7 +34,7 @@ class MSHookMessageExCodeSearchOperation(FunctionHookCodeSearchOperation):
             self.executable.binary, invocation.caller_func_start_address
         )
 
-        # Look for an objc_getClass() call before MSHookMessageEx()
+        # Look for an objc_getClass() call before the invocation of logos_register_hook()
         getClass_invocation = self.last_invocation_of_function(
             function_analyzer, "objc_getClass", invocation.caller_addr
         )
@@ -38,15 +42,13 @@ class MSHookMessageExCodeSearchOperation(FunctionHookCodeSearchOperation):
             logging.debug(f"Did not find objc_getClass() before for invocation {invocation}")
             return None
 
-        # Get the value of x0 at the invocation of objc_getClass().
-        # It will be the class name
+        # Get the value of x0 at the invocation address. It will be the class name
         class_name = self.read_string_from_register(function_analyzer, "x0", getClass_invocation)
         if not class_name:
             logging.debug(f"Failed to read the class name at {getClass_invocation} for {invocation}")
             return None
 
-        # Get the value of x1 at the invocation of MSHookMessageEx().
-        # It will be the selector name
+        # Get the value of x1 at the invocation address. It will be the selector name
         invocation_instr = function_analyzer.get_instruction_at_address(invocation.caller_addr)
         sel_value = self.get_register_contents_at_instruction(
             function_analyzer, "x1", invocation_instr, strongarm=False
@@ -62,7 +64,6 @@ class MSHookMessageExCodeSearchOperation(FunctionHookCodeSearchOperation):
             return None
 
         # Get the replacement function provided in arg 3
-        # It will be in x2 at the invocation of MSHookMessageEx()
         replacement_func_reg = self.get_register_contents_at_instruction(
             function_analyzer,
             "x2",
