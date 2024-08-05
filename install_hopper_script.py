@@ -51,4 +51,3 @@ for module in modules_to_copy:
             shutil.copy(module_source_path, module_destination_path)
     except Exception as e:
         print(f"failed to copy {module_source_path} to {module_destination_path}: {e}")
-        pass

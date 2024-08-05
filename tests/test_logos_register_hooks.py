@@ -47,7 +47,7 @@ class TestMsHookMessageEx:
     def test_multiple_hooks_no_args(self) -> None:
         source_code = """
         %hook UIApplication
-        - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions { return YES; }
+        - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(id)launchOptions { return YES; }
         %end
         %hook UIWindow
         - (void)_rotateWindowToOrientation:(int)orientation updateStatusBar:(BOOL)updateStatusBar {}

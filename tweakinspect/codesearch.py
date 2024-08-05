@@ -74,7 +74,6 @@ class FunctionHookCodeSearchOperation(ABC):
                         return value
                 except Exception as exc:
                     print(f"Error reading string from address {_address}: {exc}")
-                    pass
             return None
 
         # TODO:

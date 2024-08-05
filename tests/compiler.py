@@ -41,7 +41,7 @@ class SnippetCompiler:
                     "-include",
                     str(theos_path / "Prefix.pch"),
                     "-isysroot",
-                    str(theos_path / "sdks/iPhoneOS14.5.sdk"),
+                    str(theos_path / "sdks/iPhoneOS16.5.sdk"),
                     "-I",
                     str(theos_path / "vendor/include"),
                     "-F",

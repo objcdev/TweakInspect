@@ -1,7 +1,8 @@
+autoflake
+black
+flake8
+isort
+mypy
+pytest
 strongarm-ios
 unix-ar
-pytest
-flake8
-mypy
-black
-isort
