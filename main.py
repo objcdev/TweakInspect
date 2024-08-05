@@ -19,7 +19,7 @@ def print_executable_info(executable: Executable, print_libraries: bool = False)
         print(
             build_multicolored_text(
                 {
-                    f"{function_hook.target.hook_name}  ": AsciiColor.WHITE,
+                    f"{function_hook.target.as_logos}  ": AsciiColor.WHITE,
                     " @": AsciiColor.DARK_GRAY,
                     f" {hex(function_hook.callsite_address)}": AsciiColor.DARK_GREEN,
                     ". replacement @": AsciiColor.DARK_GRAY,
@@ -44,7 +44,7 @@ def print_executable_info(executable: Executable, print_libraries: bool = False)
             print(
                 build_multicolored_text(
                     {
-                        f"{hook.target.hook_name}  ": AsciiColor.WHITE,
+                        f"{hook.target.as_logos}  ": AsciiColor.WHITE,
                         " @": AsciiColor.DARK_GRAY,
                         f" {hex(hook.callsite_address)}": AsciiColor.DARK_GREEN,
                         ". replacement @": AsciiColor.DARK_GRAY,

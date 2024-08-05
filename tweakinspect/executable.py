@@ -7,6 +7,8 @@ from pathlib import Path
 import unix_ar
 from strongarm.macho import MachoParser
 
+from tweakinspect.codesearches.class_addMethod import ClassAddMethodCodeSearchOperation
+from tweakinspect.codesearches.class_replaceMethod import ClassReplaceMethodCodeSearchOperation
 from tweakinspect.codesearches.logos_register_hook import LogosRegisterHookCodeSearchOperation
 from tweakinspect.codesearches.method_setImplementation import MethodSetImpCodeSearchOperation
 from tweakinspect.codesearches.MSHookFunction import MSHookFunctionCodeSearchOperation
@@ -22,7 +24,7 @@ class Executable(object):
         self, original_file_name: str | None = None, file_bytes: bytes | None = None, file_path: Path | None = None
     ) -> None:
         self.original_file_name = original_file_name
-        self.file_path = file_path
+        self.file_path = Path(file_path) if file_path else None
         if file_path is None and file_bytes is not None:
             temp_file = tempfile.NamedTemporaryFile(mode="wb", delete=False)
             temp_file.write(file_bytes)
@@ -40,10 +42,12 @@ class Executable(object):
             self.hooked_symbols = list(
                 itertools.chain(
                     *[
+                        ClassAddMethodCodeSearchOperation(self).analyze(),
+                        ClassReplaceMethodCodeSearchOperation(self).analyze(),
+                        LogosRegisterHookCodeSearchOperation(self).analyze(),
                         MSHookFunctionCodeSearchOperation(self).analyze(),
                         MSHookMessageExCodeSearchOperation(self).analyze(),
                         MethodSetImpCodeSearchOperation(self).analyze(),
-                        LogosRegisterHookCodeSearchOperation(self).analyze(),
                     ]
                 )
             )

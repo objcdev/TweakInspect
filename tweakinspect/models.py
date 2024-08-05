@@ -16,7 +16,7 @@ class FunctionTarget:
         return "unknown"
 
     @property
-    def hook_name(self) -> str:
+    def as_logos(self) -> str:
         return f"%hookf {self.name}()"
 
 
@@ -36,8 +36,28 @@ class ObjectiveCTarget(FunctionTarget):
         return f"-[{self.class_name} {self.method_name}]"
 
     @property
-    def hook_name(self) -> str:
+    def as_logos(self) -> str:
         return f"%hook {self.name}"
+
+    def __hash__(self) -> int:
+        return hash(self.name)
+
+    def __eq__(self, other: object) -> bool:
+        return str(self) == str(other)
+
+
+@dataclass
+class NewObjectiveCMethodTarget(ObjectiveCTarget):
+
+    class_name: str
+    method_name: str
+
+    def __init__(self, class_name: str, method_name: str) -> None:
+        super().__init__(class_name, method_name)
+
+    @property
+    def as_logos(self) -> str:
+        return f"%new {self.name}"
 
     def __hash__(self) -> int:
         return hash(self.name)
@@ -62,7 +82,7 @@ class Hook:
     callsite_address: int
 
     def __str__(self) -> str:
-        return self.target.hook_name
+        return self.target.as_logos
 
     def __hash__(self) -> int:
         return hash(str(self))
