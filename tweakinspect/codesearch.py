@@ -84,7 +84,7 @@ class FunctionHookCodeSearchOperation(ABC):
 
     def get_register_contents_at_instruction(
         self, function_analyzer: ObjcFunctionAnalyzer, register: str, start_instr: CsInsn, strongarm: bool = True
-    ):
+    ) -> RegisterContents:
         # Strongarm isn't working for a lot of cases, so only use it if specified by the caller.
         # Otherwise,
         # fallback to a reimplementation of SA's get_register_contents_at_instruction()

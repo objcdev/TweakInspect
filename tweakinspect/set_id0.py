@@ -1,8 +1,13 @@
+from typing import TYPE_CHECKING
+
 from strongarm.macho import MachoAnalyzer
 from strongarm.objc import ObjcFunctionAnalyzer, ObjcInstruction, RegisterContentsType
 
+if TYPE_CHECKING:
+    from tweakinspect.executable import Executable
 
-def does_call_setuid0(executable) -> bool:
+
+def does_call_setuid0(executable: "Executable") -> bool:
     """Find invocations of setuid(0)"""
     analyzer = MachoAnalyzer.get_analyzer(executable.binary)
     setuid = analyzer.callable_symbol_for_symbol_name("_setuid")
@@ -24,7 +29,7 @@ def does_call_setuid0(executable) -> bool:
     return False
 
 
-def does_call_setgid0(executable) -> bool:
+def does_call_setgid0(executable: "Executable") -> bool:
     """Find invocations of setgid(0)"""
     analyzer = MachoAnalyzer.get_analyzer(executable.binary)
     setgid = analyzer.callable_symbol_for_symbol_name("_setgid")

@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass
@@ -18,6 +19,25 @@ class FunctionTarget:
     @property
     def as_logos(self) -> str:
         return f"%hookf {self.name}()"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "type": self.__class__.__name__,
+            "target_function_address": self.target_function_address,
+            "target_function_name": self.target_function_name,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "FunctionTarget":
+        type_ = data.pop("type")
+        if type_ == "ObjectiveCTarget":
+            return ObjectiveCTarget.from_dict(data)
+        elif type_ == "NewObjectiveCMethodTarget":
+            return NewObjectiveCMethodTarget.from_dict(data)
+        elif type_ == "FunctionTarget":
+            return cls(**data)
+
+        raise ValueError(f"Unknown type: {type_}")
 
 
 @dataclass
@@ -45,10 +65,20 @@ class ObjectiveCTarget(FunctionTarget):
     def __eq__(self, other: object) -> bool:
         return str(self) == str(other)
 
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "type": self.__class__.__name__,
+            "class_name": self.class_name,
+            "method_name": self.method_name,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "ObjectiveCTarget":
+        return cls(**data)
+
 
 @dataclass
 class NewObjectiveCMethodTarget(ObjectiveCTarget):
-
     class_name: str
     method_name: str
 
@@ -59,11 +89,16 @@ class NewObjectiveCMethodTarget(ObjectiveCTarget):
     def as_logos(self) -> str:
         return f"%new {self.name}"
 
-    def __hash__(self) -> int:
-        return hash(self.name)
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "type": self.__class__.__name__,
+            "class_name": self.class_name,
+            "method_name": self.method_name,
+        }
 
-    def __eq__(self, other: object) -> bool:
-        return str(self) == str(other)
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "NewObjectiveCMethodTarget":
+        return cls(**data)
 
 
 @dataclass
@@ -71,7 +106,6 @@ class Hook:
 
     # The address or name of the item being hooked
     target: FunctionTarget
-
     # The address of the replacement function
     replacement_address: int
 
@@ -92,3 +126,21 @@ class Hook:
 
     def __eq__(self, other: object) -> bool:
         return str(self) == str(other)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "type": self.__class__.__name__,
+            "target": self.target.to_dict(),
+            "replacement_address": self.replacement_address,
+            "original_address": self.original_address,
+            "callsite_address": self.callsite_address,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "Hook":
+        return cls(
+            target=FunctionTarget.from_dict(data["target"]),
+            replacement_address=data["replacement_address"],
+            original_address=data["original_address"],
+            callsite_address=data["callsite_address"],
+        )

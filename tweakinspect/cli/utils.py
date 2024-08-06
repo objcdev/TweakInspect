@@ -26,9 +26,9 @@ class AsciiColor(enum.Enum):
     DARK_GREEN = 22
 
 
-def style_text_with_color(text: str, color_code: AsciiColor):
+def style_text_with_color(text: str, color_code: AsciiColor) -> str:
     return f"\033[38;5;{color_code.value}m{text}\033[0m"
 
 
-def build_multicolored_text(text_color_pairs: dict[str, AsciiColor]):
+def build_multicolored_text(text_color_pairs: dict[str, AsciiColor]) -> str:
     return "".join([style_text_with_color(k, v) for k, v in text_color_pairs.items()])
