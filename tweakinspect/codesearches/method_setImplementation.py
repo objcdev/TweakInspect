@@ -35,14 +35,14 @@ class MethodSetImpCodeSearchOperation(FunctionHookCodeSearchOperation):
             function_analyzer, "objc_getClass", invocation.caller_addr
         )
         if not getClass_invocation:
-            logging.debug(f"Did not find objc_getClass() before for invocation {invocation}")
+            logging.info(f"Did not find objc_getClass() before for invocation {invocation}")
             return None
 
         # Get the value of x0 at the invocation of objc_getClass().
         # It will be the class name
         class_name = self.read_string_from_register(function_analyzer, "x0", getClass_invocation)
         if not class_name:
-            logging.debug(f"Failed to read the class name at {getClass_invocation} for {invocation}")
+            logging.info(f"Failed to read the class name at {getClass_invocation} for {invocation}")
             return None
 
         # The second arg is a Method. Look for calls to getInstanceMethod/getClassMethod
@@ -85,12 +85,13 @@ class MethodSetImpCodeSearchOperation(FunctionHookCodeSearchOperation):
             logging.debug(f"Replacement imp not found in x1 register for {class_name} {selector_name}")
             return None
 
+        replacement_imp_address = self.resolve_block_imp(replacement_imp_reg.value)
         return Hook(
             target=ObjectiveCTarget(
                 class_name=class_name,
                 method_name=selector_name,
             ),
-            replacement_address=replacement_imp_reg.value,
+            replacement_address=replacement_imp_address,
             original_address=0,
             callsite_address=int(invocation.caller_addr),
         )

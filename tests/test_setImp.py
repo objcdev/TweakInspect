@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from tests.compiler import SnippetCompiler
 from tweakinspect.executable import Executable
 from tweakinspect.models import Hook, ObjectiveCTarget
@@ -149,3 +151,41 @@ class TestSetImplementation:
             assert hook3.replacement_address >= 0x4000
             assert hook3.original_address == 0
             assert str(hook3) == "%hook -[UIView viewDidLoad]"
+
+    def test_setimp_using_block_imp(self) -> None:
+        exec = Executable(file_path=Path(__file__).parent / "bin" / "test_setimp_using_block_imp.dylib")
+        hooks: list[Hook] = sorted(exec.get_hooks())
+        assert len(hooks) == 3
+
+        hooks_as_dicts = [hook.to_dict() for hook in hooks]
+        assert hooks_as_dicts == [
+            {
+                "type": "Hook",
+                "target": {"type": "ObjectiveCTarget", "class_name": "RDKClient", "method_name": "userAgent"},
+                "replacement_address": 0x47E8,
+                "original_address": 0,
+                "callsite_address": 0x4304,
+            },
+            {
+                "type": "Hook",
+                "target": {
+                    "type": "ObjectiveCTarget",
+                    "class_name": "RDKOAuthCredential",
+                    "method_name": "clientIdentifier",
+                },
+                "replacement_address": 0x4754,
+                "original_address": 0,
+                "callsite_address": 0x4280,
+            },
+            {
+                "type": "Hook",
+                "target": {
+                    "type": "ObjectiveCTarget",
+                    "class_name": "__NSCFLocalSessionTask",
+                    "method_name": "_onqueue_resume",
+                },
+                "replacement_address": 0x7DA8,
+                "original_address": 0,
+                "callsite_address": 0x43B4,
+            },
+        ]

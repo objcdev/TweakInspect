@@ -1,3 +1,4 @@
+import logging
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
@@ -165,3 +166,36 @@ class FunctionHookCodeSearchOperation(ABC):
             if src.reg == ARM64_REG_SP and len(instr.operands) > 1:
                 sp_offset = src.mem.base + src.mem.disp
                 target_register = f"{target_register}+{sp_offset}"
+
+    def resolve_block_imp(self, imp_address: int) -> int:
+        # When an IMP is created using imp_implementationWithBlock(), the address points to
+        # a block structure in CONST __DATA that contains the real function pointer
+
+        # If the address is not in __DATA, it's likely a non-block IMP
+        section = self.macho_analyzer.binary.section_for_address(imp_address)
+        print(f"Section: {section}")
+        if not section or not section.segment_name.startswith("__DATA"):
+            return imp_address
+
+        try:
+            # The block structure is 24 bytes long, with the function pointer at offset 16
+            block_struct = self.macho_analyzer.binary.get_contents_from_address(imp_address, 24)
+            function_ptr = int.from_bytes(block_struct[16:24], "little")
+
+            # The function pointer should be in __TEXT
+            section = self.macho_analyzer.binary.section_for_address(function_ptr)
+            if not section or not section.segment_name.startswith("__TEXT"):
+                return imp_address
+
+            # If there's symbols, the name of this is expected to contain "_block_invoke"
+            func_sym_name = self.macho_analyzer.exported_symbol_name_for_address(function_ptr)
+            if func_sym_name and "_block_invoke" not in func_sym_name:
+                logging.error(
+                    f"Assumed block-IMP at {hex(imp_address)} resolved to function {hex(function_ptr)}"
+                    " but its symbol name is not block-like: {func_sym_name}"
+                )
+                return imp_address
+            return function_ptr
+        except Exception as exc:
+            logging.error(f"Error resolving block IMP at {hex(imp_address)}: {exc}")
+            return imp_address
