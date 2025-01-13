@@ -59,8 +59,6 @@ class SnippetCompiler:
                 stderr=subprocess.STDOUT,
             )
         except subprocess.CalledProcessError as e:
-            print(Path(logos_source_path).read_text())
-            shutil.rmtree(self.temp_dir_path.as_posix(), ignore_errors=True)
             raise Exception(e.stdout.decode("utf-8"))
 
     def __enter__(self) -> Path:

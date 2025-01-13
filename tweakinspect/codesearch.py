@@ -74,7 +74,7 @@ class FunctionHookCodeSearchOperation(ABC):
                             return value.name
                         return value
                 except Exception as exc:
-                    print(f"Error reading string from address {_address}: {exc}")
+                    logging.error(f"Error reading string from address {_address}: {exc}")
             return None
 
         # TODO:
@@ -173,7 +173,6 @@ class FunctionHookCodeSearchOperation(ABC):
 
         # If the address is not in __DATA, it's likely a non-block IMP
         section = self.macho_analyzer.binary.section_for_address(imp_address)
-        print(f"Section: {section}")
         if not section or not section.segment_name.startswith("__DATA"):
             return imp_address
 

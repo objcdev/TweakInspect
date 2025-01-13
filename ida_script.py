@@ -11,6 +11,7 @@ from tweakinspect.codesearches.method_setImplementation import MethodSetImpCodeS
 from tweakinspect.codesearches.MSHookFunction import MSHookFunctionCodeSearchOperation
 from tweakinspect.codesearches.MSHookMessageEx import MSHookMessageExCodeSearchOperation
 from tweakinspect.executable import Executable
+from tweakinspect.models import Hook, NewObjectiveCMethodTarget
 
 
 class TweakInspectIDA:
@@ -24,6 +25,27 @@ class TweakInspectIDA:
             LogosRegisterHookCodeSearchOperation,
         ]
 
+    def rename_address(self, address: int, new_name: str) -> None:
+        """Rename an address in IDA. The address may be a function, data, etc."""
+        ida_friendly_new_name = self.sanitize_name(new_name)
+        if set_name(address, new_name, SN_NOCHECK) != 1:
+            print(f"Failed to rename {hex(address)} to {ida_friendly_new_name}")
+        else:
+            print(f"{hex(address):>10} -> {ida_friendly_new_name}")
+
+    def sanitize_name(self, name: str) -> str:
+        """Remove characters that IDA doesn't like in names (objc brackets, colons, spaces)"""
+        for char_to_remove in ["-", "+", "[", "]", "(", ")"]:
+            name = name.replace(char_to_remove, "")
+
+        for char_to_replace in [" ", ":", ",", "__"]:
+            name = name.replace(char_to_replace, "_")
+
+        if name.endswith("_"):
+            name = name[:-1]
+
+        return name
+
     def run(self):
         binary_path = get_input_file_path()
         if not binary_path:
@@ -31,30 +53,24 @@ class TweakInspectIDA:
             return
 
         executable = Executable(file_path=Path(binary_path))
-        hooks = []
+        hooks: list[Hook] = []
         for code_search_op in self.codesearch_ops:
             hooks.extend(code_search_op(executable).analyze())
 
         if not hooks:
-            print("[Info] No hooks found in binary")
+            print("No hooks found in binary")
             return
 
-        print(f"[Info] Found {len(hooks)} hooks")
+        print(f"Found {len(hooks)} hooks")
         for hook in hooks:
-            function_address = hook.replacement_address
-            new_routine_name = str(hook)
-            print(f"[Info] Renaming function at {hex(function_address)} to {new_routine_name}")
-
-            if get_func(function_address):
-                set_name(function_address, new_routine_name, SN_CHECK)
-            else:
-                print(f"[Warning] No function at address {hex(function_address)}")
-
-
-def main():
-    inspector = TweakInspectIDA()
-    inspector.run()
+            # Rename the replacement function to HOOKED_<target_name> (or NEW_<target_name> for "%new" methods)
+            symbol_qualifier = "NEW_" if isinstance(hook.target, NewObjectiveCMethodTarget) else "HOOK_"
+            self.rename_address(hook.replacement_address, f"{symbol_qualifier}_{hook.target.name}")
+            if hook.original_address > 0:
+                # Rename the pointer to the hooked item's original implementation to ORIG_<target_name>
+                self.rename_address(hook.original_address, f"ORIG_{hook.target.name}")
 
 
 if __name__ == "__main__":
-    main()
+    inspector = TweakInspectIDA()
+    inspector.run()
